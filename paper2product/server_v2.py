@@ -49,6 +49,11 @@ from .services.productization import (
     generate_deployment_plan,
     generate_launch_package,
 )
+from .services.auth import (
+    authenticate,
+    generate_api_key,
+    login,
+)
 
 
 def _load_frontend():
@@ -103,6 +108,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def _get_project(self, project_id: str):
         return db.get_project(project_id)
+
+    def _check_auth(self) -> dict | None:
+        """Check authentication from request headers. Returns user info or None."""
+        return authenticate(dict(self.headers))
 
     def do_OPTIONS(self):
         self.send_response(200)
@@ -274,6 +283,23 @@ class Handler(BaseHTTPRequestHandler):
 
             if sub == "approve":
                 return self._send_json(approve_project(project_id, payload.get("approver", "unknown")))
+
+        # Auth endpoints
+        if path == "/api/v2/auth/login":
+            result = login(payload.get("username", ""), payload.get("password", ""))
+            if result:
+                return self._send_json(result)
+            return self._send_json({"detail": "Invalid credentials"}, status=401)
+
+        if path == "/api/v2/auth/api-key":
+            user = self._check_auth()
+            if not user:
+                return self._send_json({"detail": "Authentication required"}, status=401)
+            key_data = generate_api_key(
+                owner=user.get("user", "unknown"),
+                scopes=payload.get("scopes"),
+            )
+            return self._send_json(key_data, status=201)
 
         # Workspace creation
         if path == "/api/v2/workspaces":

@@ -4,8 +4,28 @@ __pycache__/
 *.db
 *.sqlite3
 .env
+.env.local
 *.egg-info/
 dist/
 build/
 .idea/
 .vscode/
+
+# Node
+node_modules/
+.next/
+frontend/node_modules/
+frontend/.next/
+
+# Flutter
+mobile/.dart_tool/
+mobile/build/
+mobile/android/.gradle/
+mobile/android/app/google-services.json
+mobile/android/key.properties
+*.jks
+*.keystore
+
+# OS
+.DS_Store
+Thumbs.db

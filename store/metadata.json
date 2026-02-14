@@ -1,0 +1,177 @@
+{
+  "app_metadata": {
+    "default_language": "en-US",
+    "app_name": "Paper2Product - AI Research OS",
+    "app_short_name": "Paper2Product",
+    "app_version": "1.0.0",
+    "min_android_version": "8.0",
+    "target_android_version": "14.0",
+    "category": "Tools",
+    "subcategory": "Productivity",
+    "content_rating": "Everyone",
+    "release_date": "2026-03-01",
+    "contact_email": "support@paper2product.com",
+    "privacy_policy_url": "https://paper2product.com/privacy-policy",
+    "terms_of_service_url": "https://paper2product.com/terms-of-service",
+    "website_url": "https://paper2product.com",
+    "support_url": "https://support.paper2product.com"
+  },
+  "description": {
+    "short_description": "Transform research papers into production-ready code and assets using AI.",
+    "full_description": "Paper2Product is a cutting-edge AI Research Operating System that transforms research papers into production-ready code and assets. Upload academic papers, select your programming language, and let AI generate clean, documented code implementations.",
+    "what_is_new": "Initial launch of Paper2Product. Features include paper-to-code conversion, multi-language support, asset generation, and AI-powered insights."
+  },
+  "data_collection": {
+    "collects_personal_data": true,
+    "data_types": [
+      "User account information (email, username, profile)",
+      "Research paper content uploaded by users",
+      "Generated code and assets",
+      "Usage analytics and feature engagement",
+      "Device information and crash reports"
+    ],
+    "data_sharing_policy": "No data selling. Data only shared with service providers under confidentiality agreements or when legally required.",
+    "data_storage": "Secure encrypted servers",
+    "privacy_policy_present": true,
+    "children_privacy_compliant": true,
+    "min_age_requirement": 13
+  },
+  "compliance": {
+    "gdpr_compliant": true,
+    "ccpa_compliant": true,
+    "coppa_compliant": true,
+    "cookie_policy": "Minimal cookie usage; analytics are anonymized",
+    "data_deletion_policy": "Account deletion removes all personal data within 30 days"
+  },
+  "images": {
+    "app_icon": {
+      "path": "assets/icon-512x512.png",
+      "format": "PNG",
+      "size": "512x512",
+      "required": true
+    },
+    "feature_graphic": {
+      "path": "assets/feature-graphic.png",
+      "format": "PNG",
+      "dimensions": "1024x500",
+      "required": true
+    },
+    "promo_graphic": {
+      "path": "assets/promo-graphic.png",
+      "format": "PNG",
+      "dimensions": "180x120",
+      "required": false
+    },
+    "screenshots": {
+      "required_count": 2,
+      "maximum_count": 8,
+      "dimensions": "1440x2560 or 1080x1920",
+      "format": "PNG or JPG"
+    },
+    "video_preview": {
+      "url": "https://youtube.com/watch?v=paper2product-intro",
+      "required": false,
+      "duration_seconds": 30
+    }
+  },
+  "features": [
+    "PDF and text paper upload",
+    "AI-powered paper analysis",
+    "Multi-language code generation",
+    "Automated asset creation",
+    "Version control and project management",
+    "Cloud synchronization",
+    "Export to multiple formats",
+    "Offline-capable analysis",
+    "AI-powered insights and recommendations",
+    "Dark mode support",
+    "Push notifications for processing status"
+  ],
+  "permissions": [
+    "READ_EXTERNAL_STORAGE",
+    "WRITE_EXTERNAL_STORAGE",
+    "INTERNET",
+    "ACCESS_NETWORK_STATE",
+    "CAMERA",
+    "RECORD_AUDIO"
+  ],
+  "supported_languages": [
+    "English (US)",
+    "English (UK)",
+    "Spanish",
+    "French",
+    "German",
+    "Chinese (Simplified)",
+    "Chinese (Traditional)",
+    "Japanese",
+    "Korean"
+  ],
+  "monetization": {
+    "pricing_model": "Freemium",
+    "free_tier": {
+      "papers_per_month": 5,
+      "storage_gb": 2,
+      "export_formats": "Basic"
+    },
+    "premium_tier": {
+      "name": "Paper2Product Premium",
+      "price_usd": 9.99,
+      "billing_period": "Monthly",
+      "papers_per_month": "Unlimited",
+      "storage_gb": 50,
+      "export_formats": "All",
+      "priority_support": true,
+      "custom_code_generation": true
+    },
+    "enterprise_tier": {
+      "contact_sales": "sales@paper2product.com",
+      "features": [
+        "Unlimited papers",
+        "Dedicated support",
+        "Custom integrations",
+        "On-premise deployment option",
+        "Team collaboration",
+        "Advanced analytics"
+      ]
+    }
+  },
+  "marketing": {
+    "tagline": "From Research to Reality",
+    "target_audience": [
+      "Researchers",
+      "Developers",
+      "Students",
+      "Data Scientists",
+      "Academic Professionals",
+      "Tech Companies"
+    ],
+    "keywords": [
+      "research",
+      "AI",
+      "code generation",
+      "academic",
+      "development",
+      "automation",
+      "productivity",
+      "tools",
+      "algorithms",
+      "machine learning",
+      "paper analysis"
+    ],
+    "promotional_channels": [
+      "Academic conferences",
+      "Developer communities",
+      "Research institutions",
+      "Tech blogs and media",
+      "Social media (LinkedIn, Twitter, GitHub)"
+    ]
+  },
+  "support": {
+    "support_email": "support@paper2product.com",
+    "support_url": "https://support.paper2product.com",
+    "faq_url": "https://paper2product.com/faq",
+    "knowledge_base": "https://docs.paper2product.com",
+    "response_time_sla": "24 hours",
+    "community_forum": "https://community.paper2product.com"
+  }
+}

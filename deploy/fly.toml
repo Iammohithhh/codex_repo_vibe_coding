@@ -1,0 +1,41 @@
+# fly.toml app configuration generated for Paper2Product 2.0 Backend
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+
+app = "p2p-backend"
+primary_region = "iad"
+
+[env]
+PORT = "8000"
+ENVIRONMENT = "production"
+PYTHONUNBUFFERED = "1"
+
+[http_service]
+internal_port = 8000
+force_https = true
+auto_stop = true
+auto_start = true
+
+[http_service.concurrency]
+type = "connections"
+hard_limit = 25
+soft_limit = 20
+
+[http_service.http_checks]
+enabled = true
+interval = "10s"
+timeout = "5s"
+grace_period = "5s"
+method = "GET"
+path = "/health"
+
+[[services]]
+protocol = "tcp"
+internal_port = 8000
+
+[services.concurrency]
+type = "connections"
+hard_limit = 25
+
+[[vm]]
+memory = "512mb"
+cpus = 1

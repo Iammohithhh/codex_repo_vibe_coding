@@ -1,0 +1,61 @@
+# =============================================================================
+# Paper2Product 2.0 — Docker Compose (Development + Production)
+# =============================================================================
+version: "3.9"
+
+services:
+  # Backend API (Python, stdlib-only)
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: p2p-backend
+    ports:
+      - "${P2P_PORT:-8000}:8000"
+    environment:
+      - P2P_SECRET=${P2P_SECRET:-paper2product-secret-key}
+      - P2P_ADMIN_USER=${P2P_ADMIN_USER:-admin}
+      - P2P_ADMIN_PASS=${P2P_ADMIN_PASS:-admin123}
+      - P2P_DB_PATH=/app/data/paper2product.db
+      - P2P_HOST=0.0.0.0
+    volumes:
+      - p2p-data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/openapi.json')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # Frontend (Next.js)
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: p2p-frontend
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Nginx reverse proxy (production)
+  nginx:
+    image: nginx:alpine
+    container_name: p2p-nginx
+    ports:
+      - "${NGINX_PORT:-80}:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+      - frontend
+    restart: unless-stopped
+
+volumes:
+  p2p-data:
+    driver: local
