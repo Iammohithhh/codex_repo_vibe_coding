@@ -1,3 +1,8 @@
+"""Paper2Product 2.0 — Core module (backwards-compatible wrapper).
+
+This module wraps the v2 agent pipeline while maintaining the original
+Phase 1 API surface for backwards compatibility.
+"""
 from __future__ import annotations
 
 import io
@@ -8,7 +13,18 @@ from dataclasses import asdict, dataclass, field
 from typing import Dict, List
 from uuid import uuid4
 
+from .agents.pipeline import run_pipeline
+from .models.schema import (
+    IngestRequest as V2IngestRequest,
+    Project as V2Project,
+    to_dict,
+)
+from .services import persistence as db
 
+
+# ---------------------------------------------------------------------------
+# Legacy dataclasses (kept for backwards compatibility)
+# ---------------------------------------------------------------------------
 @dataclass
 class IngestRequest:
     title: str
@@ -51,6 +67,42 @@ class Store:
 STORE = Store()
 
 
+# ---------------------------------------------------------------------------
+# V2 pipeline integration
+# ---------------------------------------------------------------------------
+def _run_v2_pipeline(payload: IngestRequest) -> V2Project:
+    """Run the full v2 multi-agent pipeline."""
+    v2_request = V2IngestRequest(
+        title=payload.title,
+        abstract=payload.abstract,
+        method_text=payload.method_text,
+        source_url=payload.source_url,
+    )
+    return run_pipeline(v2_request)
+
+
+def _v2_to_legacy_spec(v2_project: V2Project) -> PaperSpec:
+    """Convert v2 PaperSpec to legacy format."""
+    spec = v2_project.paper_spec
+    equations = [eq.raw for eq in spec.key_equations] if spec and spec.key_equations else ["L = CrossEntropy(y_pred, y_true)"]
+    citations = {}
+    if spec and spec.citations:
+        for key, cite in spec.citations.items():
+            citations[key] = Citation(section=cite.section, snippet=cite.snippet)
+    return PaperSpec(
+        problem=spec.problem if spec else "",
+        method=spec.method if spec else "",
+        key_equations=equations,
+        datasets=spec.datasets if spec else [],
+        metrics=spec.metrics if spec else [],
+        assumptions=spec.assumptions if spec else [],
+        citations=citations,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Public API (backwards compatible)
+# ---------------------------------------------------------------------------
 def _extract_equations(text: str) -> List[str]:
     equations = re.findall(r"([A-Za-z]\s*=\s*[^\n\.;]{3,})", text)
     return equations[:3] or ["L = CrossEntropy(y_pred, y_true)"]
@@ -93,18 +145,44 @@ def build_architecture_mermaid(spec: PaperSpec) -> str:
 
 
 def create_project(payload: IngestRequest) -> Project:
-    spec = build_paper_spec(payload)
-    project = Project(id=str(uuid4()), ingest=payload, paper_spec=spec, architecture_mermaid=build_architecture_mermaid(spec))
+    """Create a project using the v2 pipeline, return legacy-compatible Project."""
+    # Run v2 pipeline
+    v2_project = _run_v2_pipeline(payload)
+    # Persist in DB
+    db.init_db()
+    db.save_project(v2_project)
+
+    # Create legacy-compatible project
+    legacy_spec = _v2_to_legacy_spec(v2_project)
+    mermaid = v2_project.code_scaffold.architecture_mermaid if v2_project.code_scaffold else build_architecture_mermaid(legacy_spec)
+    project = Project(
+        id=v2_project.id,
+        ingest=payload,
+        paper_spec=legacy_spec,
+        architecture_mermaid=mermaid,
+        confidence_score=v2_project.confidence_score,
+    )
     STORE.projects[project.id] = project
     return project
 
 
 def project_to_dict(project: Project) -> Dict:
-    raw = asdict(project)
-    return raw
+    return asdict(project)
 
 
 def generate_code_scaffold(project: Project, framework: str = "pytorch") -> Dict[str, str]:
+    """Generate code scaffold — uses v2 implementer if available, falls back to basic."""
+    # Try to get from v2 DB
+    v2_data = db.get_project(project.id)
+    if v2_data and v2_data.get("code_scaffold"):
+        scaffold = v2_data["code_scaffold"]
+        files = {}
+        for f in scaffold.get("files", []):
+            files[f.get("path", "")] = f.get("content", "")
+        if files:
+            return files
+
+    # Fallback to basic generation
     return {
         "README.md": (
             f"# {project.ingest.title}\n\n"
@@ -137,6 +215,12 @@ def export_zip(project: Project, framework: str = "pytorch") -> bytes:
 
 
 def build_distillation(project: Project) -> Dict:
+    """Build distillation — uses v2 explainer if available."""
+    v2_data = db.get_project(project.id)
+    if v2_data and v2_data.get("distillation"):
+        return v2_data["distillation"]
+
+    # Fallback
     return {
         "poster": {
             "problem": project.paper_spec.problem,

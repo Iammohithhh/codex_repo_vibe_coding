@@ -1,18 +1,23 @@
+"""End-to-end tests for Paper2Product — covers both v1 (legacy) and v2 APIs."""
 import json
+import os
 import threading
 import time
 import unittest
 import urllib.request
 
-from paper2product.server import run
-
 
 class TestPhase1E2E(unittest.TestCase):
+    """Legacy v1 API e2e test — backwards compatibility."""
+
     @classmethod
     def setUpClass(cls):
+        from paper2product.services import persistence as db
+        db.init_db(":memory:")
+        from paper2product.server import run
         cls.thread = threading.Thread(target=run, kwargs={"host": "127.0.0.1", "port": 8011}, daemon=True)
         cls.thread.start()
-        time.sleep(0.3)
+        time.sleep(0.5)
 
     def request_json(self, method: str, path: str, data=None):
         body = None

@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Paper2Product 2.0 — AI Research OS</title>
+<style>
+:root {
+  --bg: #0f1117;
+  --surface: #1a1d27;
+  --surface2: #232635;
+  --border: #2d3148;
+  --text: #e4e6f0;
+  --text-dim: #8b8fa3;
+  --accent: #6366f1;
+  --accent-light: #818cf8;
+  --green: #22c55e;
+  --red: #ef4444;
+  --orange: #f59e0b;
+  --blue: #3b82f6;
+  --purple: #a855f7;
+  --radius: 10px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+a { color: var(--accent-light); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Layout */
+.app { display: flex; min-height: 100vh; }
+.sidebar { width: 260px; background: var(--surface); border-right: 1px solid var(--border); padding: 20px; flex-shrink: 0; overflow-y: auto; }
+.main { flex: 1; padding: 24px 32px; overflow-y: auto; max-height: 100vh; }
+
+/* Sidebar */
+.logo { font-size: 18px; font-weight: 700; margin-bottom: 4px; color: var(--accent-light); }
+.logo-sub { font-size: 12px; color: var(--text-dim); margin-bottom: 24px; }
+.nav-section { font-size: 11px; text-transform: uppercase; color: var(--text-dim); letter-spacing: 1px; margin: 20px 0 8px; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 14px; color: var(--text); transition: background 0.15s; }
+.nav-item:hover { background: var(--surface2); }
+.nav-item.active { background: var(--accent); color: white; }
+.nav-icon { width: 18px; text-align: center; }
+.project-list { margin-top: 12px; }
+.project-item { padding: 6px 12px; font-size: 13px; color: var(--text-dim); border-radius: 4px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.project-item:hover { background: var(--surface2); color: var(--text); }
+.project-item.active { color: var(--accent-light); }
+
+/* Cards */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
+.card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.card-title { font-size: 16px; font-weight: 600; }
+.card-subtitle { font-size: 13px; color: var(--text-dim); }
+
+/* Buttons */
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.15s; }
+.btn-primary { background: var(--accent); color: white; }
+.btn-primary:hover { background: var(--accent-light); }
+.btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+.btn-secondary:hover { background: var(--border); }
+.btn-success { background: var(--green); color: white; }
+.btn-danger { background: var(--red); color: white; }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+
+/* Forms */
+.form-group { margin-bottom: 16px; }
+.form-label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: var(--text-dim); }
+.form-input, .form-textarea, .form-select {
+  width: 100%; padding: 10px 12px; background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text); font-size: 14px; font-family: inherit;
+}
+.form-textarea { min-height: 80px; resize: vertical; }
+.form-input:focus, .form-textarea:focus, .form-select:focus { outline: none; border-color: var(--accent); }
+
+/* Tabs */
+.tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+.tab { padding: 10px 18px; font-size: 14px; color: var(--text-dim); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; }
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--accent-light); border-bottom-color: var(--accent); }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* Badges */
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.badge-green { background: rgba(34,197,94,0.15); color: var(--green); }
+.badge-red { background: rgba(239,68,68,0.15); color: var(--red); }
+.badge-orange { background: rgba(245,158,11,0.15); color: var(--orange); }
+.badge-blue { background: rgba(59,130,246,0.15); color: var(--blue); }
+.badge-purple { background: rgba(168,85,247,0.15); color: var(--purple); }
+
+/* Score */
+.score-ring { width: 100px; height: 100px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 700; margin: 0 auto 12px; }
+.score-label { text-align: center; font-size: 13px; color: var(--text-dim); }
+
+/* Grid */
+.grid { display: grid; gap: 16px; }
+.grid-2 { grid-template-columns: 1fr 1fr; }
+.grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+.grid-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+
+/* Agent messages */
+.agent-msg { padding: 10px 14px; margin-bottom: 8px; border-radius: 8px; font-size: 13px; border-left: 3px solid; }
+.agent-msg.reader { border-color: var(--blue); background: rgba(59,130,246,0.08); }
+.agent-msg.skeptic { border-color: var(--orange); background: rgba(245,158,11,0.08); }
+.agent-msg.implementer { border-color: var(--green); background: rgba(34,197,94,0.08); }
+.agent-msg.verifier { border-color: var(--purple); background: rgba(168,85,247,0.08); }
+.agent-msg.explainer { border-color: var(--accent); background: rgba(99,102,241,0.08); }
+.agent-role { font-weight: 600; text-transform: uppercase; font-size: 11px; margin-bottom: 4px; }
+
+/* Code */
+pre { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 14px; overflow-x: auto; font-size: 13px; font-family: 'JetBrains Mono', 'Fira Code', monospace; line-height: 1.5; }
+code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+
+/* Mermaid */
+.mermaid-container { background: #fff; border-radius: 8px; padding: 16px; margin: 12px 0; color: #333; min-height: 60px; }
+
+/* Table */
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); font-size: 13px; }
+th { color: var(--text-dim); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* Loading */
+.spinner { width: 24px; height: 24px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite; display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-overlay { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 40px; color: var(--text-dim); }
+
+/* Checklist */
+.checklist-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; font-size: 13px; }
+.checklist-check { width: 18px; height: 18px; border-radius: 4px; border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; }
+.checklist-check.done { background: var(--green); border-color: var(--green); color: white; }
+
+/* Responsive */
+@media (max-width: 900px) {
+  .sidebar { display: none; }
+  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+  .main { padding: 16px; }
+}
+
+/* Page header */
+.page-header { margin-bottom: 24px; }
+.page-title { font-size: 24px; font-weight: 700; margin-bottom: 4px; }
+.page-desc { font-size: 14px; color: var(--text-dim); }
+
+/* Stat cards */
+.stat-card { text-align: center; padding: 20px; }
+.stat-value { font-size: 28px; font-weight: 700; }
+.stat-label { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+
+/* File tree */
+.file-tree { font-size: 13px; }
+.file-item { padding: 4px 0 4px 16px; cursor: pointer; color: var(--text-dim); }
+.file-item:hover { color: var(--accent-light); }
+.file-item.active { color: var(--accent-light); font-weight: 500; }
+
+/* Progress bar */
+.progress-bar { height: 8px; background: var(--surface2); border-radius: 4px; overflow: hidden; }
+.progress-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+
+/* Toast */
+.toast { position: fixed; bottom: 24px; right: 24px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 20px; font-size: 14px; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.3); animation: slideIn 0.3s; }
+@keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="logo">Paper2Product</div>
+    <div class="logo-sub">AI Research OS v2.0</div>
+
+    <div class="nav-section">Modules</div>
+    <div class="nav-item active" onclick="showPage('intake')"><span class="nav-icon">+</span> Project Intake</div>
+    <div class="nav-item" onclick="showPage('studio')"><span class="nav-icon">&#9881;</span> Artifact Studio</div>
+    <div class="nav-item" onclick="showPage('lab')"><span class="nav-icon">&#9879;</span> Experiment Lab</div>
+    <div class="nav-item" onclick="showPage('api')"><span class="nav-icon">&#10095;</span> API Builder</div>
+    <div class="nav-item" onclick="showPage('launch')"><span class="nav-icon">&#9650;</span> Launch Center</div>
+    <div class="nav-item" onclick="showPage('review')"><span class="nav-icon">&#10003;</span> Team Review</div>
+
+    <div class="nav-section">Projects</div>
+    <div id="sidebar-projects" class="project-list">
+      <div style="font-size: 12px; color: var(--text-dim); padding: 6px 12px;">No projects yet</div>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="main" id="main-content">
+    <!-- Page: Project Intake -->
+    <div id="page-intake" class="page active">
+      <div class="page-header">
+        <div class="page-title">Project Intake</div>
+        <div class="page-desc">Upload a paper or paste details to start the multi-agent pipeline.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" style="margin-bottom: 16px;">Paper Details</div>
+        <div class="form-group">
+          <label class="form-label">Title</label>
+          <input class="form-input" id="inp-title" placeholder="e.g. Efficient Distilled Transformers" value="Efficient Distilled Transformers">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Abstract (min 40 chars)</label>
+          <textarea class="form-textarea" id="inp-abstract" rows="3" placeholder="Paste abstract...">We propose an efficient transformer compression method combining knowledge distillation with structured pruning for low-latency inference while preserving performance on production NLP tasks. Our approach achieves state-of-the-art accuracy-latency trade-offs.</textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Method Text (min 80 chars)</label>
+          <textarea class="form-textarea" id="inp-method" rows="4" placeholder="Paste method section...">Our method defines L = alpha * KL(student, teacher) + beta * CE(student, labels). We apply iterative magnitude pruning with quantization-aware training. The student architecture uses 6 transformer layers with 256 hidden dim and 4 attention heads. We train for 50 epochs with batch_size 64 using Adam optimizer with learning_rate 1e-4. We evaluate on CIFAR-10 and SQuAD, reporting accuracy, F1, and latency metrics.</textarea>
+        </div>
+        <div class="grid grid-3">
+          <div class="form-group">
+            <label class="form-label">Framework</label>
+            <select class="form-select" id="inp-framework">
+              <option value="pytorch">PyTorch</option>
+              <option value="tensorflow">TensorFlow</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Persona</label>
+            <select class="form-select" id="inp-persona">
+              <option value="ml_engineer">ML Engineer</option>
+              <option value="founder_pm">Founder / PM</option>
+              <option value="designer_educator">Designer / Educator</option>
+              <option value="mobile_dev">Mobile Developer</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Source URL (optional)</label>
+            <input class="form-input" id="inp-url" placeholder="https://arxiv.org/abs/...">
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="ingestPaper()" id="btn-ingest">Run Multi-Agent Pipeline</button>
+      </div>
+
+      <div id="ingest-result" style="display:none;"></div>
+    </div>
+
+    <!-- Page: Artifact Studio -->
+    <div id="page-studio" class="page" style="display:none;">
+      <div class="page-header">
+        <div class="page-title">Artifact Studio</div>
+        <div class="page-desc">Generated code, visuals, summaries, and reports.</div>
+      </div>
+      <div id="studio-content"><div class="card"><p style="color:var(--text-dim);">Ingest a paper first to see generated artifacts.</p></div></div>
+    </div>
+
+    <!-- Page: Experiment Lab -->
+    <div id="page-lab" class="page" style="display:none;">
+      <div class="page-header">
+        <div class="page-title">Experiment Lab</div>
+        <div class="page-desc">Run configs, benchmark dashboard, and experiment tracking.</div>
+      </div>
+      <div id="lab-content"><div class="card"><p style="color:var(--text-dim);">Ingest a paper first to access experiments.</p></div></div>
+    </div>
+
+    <!-- Page: API Builder -->
+    <div id="page-api" class="page" style="display:none;">
+      <div class="page-header">
+        <div class="page-title">API Builder</div>
+        <div class="page-desc">Generated OpenAPI specs, SDK stubs, and API contracts.</div>
+      </div>
+      <div id="api-content"><div class="card"><p style="color:var(--text-dim);">Run productization first to generate API contracts.</p></div></div>
+    </div>
+
+    <!-- Page: Launch Center -->
+    <div id="page-launch" class="page" style="display:none;">
+      <div class="page-header">
+        <div class="page-title">Launch Center</div>
+        <div class="page-desc">Web deploy, mobile release checklist, and staging config.</div>
+      </div>
+      <div id="launch-content"><div class="card"><p style="color:var(--text-dim);">Run productization first to see launch options.</p></div></div>
+    </div>
+
+    <!-- Page: Team Review -->
+    <div id="page-review" class="page" style="display:none;">
+      <div class="page-header">
+        <div class="page-title">Team Review</div>
+        <div class="page-desc">Comments, approvals, and governance workflows.</div>
+      </div>
+      <div id="review-content"><div class="card"><p style="color:var(--text-dim);">Ingest a paper first to start reviews.</p></div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';
+let currentProject = null;
+let projects = [];
+
+// Navigation
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.style.display = 'none');
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const page = document.getElementById('page-' + name);
+  if (page) page.style.display = 'block';
+  event.target.closest('.nav-item').classList.add('active');
+
+  if (currentProject) {
+    if (name === 'studio') loadStudio();
+    if (name === 'lab') loadLab();
+    if (name === 'api') loadAPI();
+    if (name === 'launch') loadLaunch();
+    if (name === 'review') loadReview();
+  }
+}
+
+function toast(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+
+async function apiFetch(path, opts = {}) {
+  const resp = await fetch(API + path, {
+    headers: { 'Content-Type': 'application/json' },
+    ...opts,
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+    throw new Error(err.detail || 'Request failed');
+  }
+  const ct = resp.headers.get('content-type') || '';
+  if (ct.includes('json')) return resp.json();
+  return resp.blob();
+}
+
+// Ingest
+async function ingestPaper() {
+  const btn = document.getElementById('btn-ingest');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Running Pipeline...';
+
+  try {
+    const payload = {
+      title: document.getElementById('inp-title').value,
+      abstract: document.getElementById('inp-abstract').value,
+      method_text: document.getElementById('inp-method').value,
+      framework: document.getElementById('inp-framework').value,
+      persona: document.getElementById('inp-persona').value,
+      source_url: document.getElementById('inp-url').value || undefined,
+    };
+
+    const project = await apiFetch('/api/v2/projects/ingest', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+
+    currentProject = project;
+    projects.push(project);
+    updateSidebar();
+    renderIngestResult(project);
+    toast('Pipeline complete! Project created.');
+  } catch (err) {
+    toast('Error: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = 'Run Multi-Agent Pipeline';
+  }
+}
+
+function updateSidebar() {
+  const el = document.getElementById('sidebar-projects');
+  el.innerHTML = projects.map((p, i) =>
+    `<div class="project-item ${p === currentProject ? 'active' : ''}" onclick="selectProject(${i})">${p.ingest?.title || p.id}</div>`
+  ).join('');
+}
+
+function selectProject(idx) {
+  currentProject = projects[idx];
+  updateSidebar();
+}
+
+function renderIngestResult(project) {
+  const el = document.getElementById('ingest-result');
+  el.style.display = 'block';
+
+  const spec = project.paper_spec || {};
+  const repro = project.reproducibility || {};
+  const msgs = project.agent_messages || [];
+  const scaffold = project.code_scaffold || {};
+
+  const scoreColor = repro.overall >= 0.7 ? 'var(--green)' : repro.overall >= 0.4 ? 'var(--orange)' : 'var(--red)';
+  const confColor = project.confidence_score >= 0.7 ? 'var(--green)' : project.confidence_score >= 0.4 ? 'var(--orange)' : 'var(--red)';
+
+  el.innerHTML = `
+    <div class="grid grid-4" style="margin-bottom: 16px;">
+      <div class="card stat-card">
+        <div class="stat-value" style="color:${confColor}">${(project.confidence_score * 100).toFixed(0)}%</div>
+        <div class="stat-label">Overall Confidence</div>
+      </div>
+      <div class="card stat-card">
+        <div class="stat-value" style="color:${scoreColor}">${((repro.overall || 0) * 100).toFixed(0)}%</div>
+        <div class="stat-label">Reproducibility Score</div>
+      </div>
+      <div class="card stat-card">
+        <div class="stat-value">${(scaffold.files || []).length}</div>
+        <div class="stat-label">Generated Files</div>
+      </div>
+      <div class="card stat-card">
+        <div class="stat-value">${msgs.length}</div>
+        <div class="stat-label">Agent Messages</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Paper Specification</div>
+      <div class="card-subtitle" style="margin-bottom: 12px;">Extracted by Reader Agent</div>
+      <table>
+        <tr><th style="width:160px;">Field</th><th>Value</th></tr>
+        <tr><td>Problem</td><td>${spec.problem || ''}</td></tr>
+        <tr><td>Method</td><td>${spec.method || ''}</td></tr>
+        <tr><td>Datasets</td><td>${(spec.datasets || []).map(d => `<span class="badge badge-blue">${d}</span> `).join('')}</td></tr>
+        <tr><td>Metrics</td><td>${(spec.metrics || []).map(m => `<span class="badge badge-green">${m}</span> `).join('')}</td></tr>
+        <tr><td>Architecture</td><td>${(spec.architecture_components || []).map(a => `<span class="badge badge-purple">${a}</span> `).join('')}</td></tr>
+        <tr><td>Equations</td><td>${(spec.key_equations || []).map(eq => `<code>${eq.raw || eq}</code>`).join('<br>')}</td></tr>
+        <tr><td>Claims</td><td>${(spec.claims || []).join('<br>')}</td></tr>
+        <tr><td>Limitations</td><td>${(spec.limitations || []).join('<br>')}</td></tr>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Reproducibility Scorecard</div>
+        <span class="badge ${repro.overall >= 0.7 ? 'badge-green' : repro.overall >= 0.4 ? 'badge-orange' : 'badge-red'}">${((repro.overall || 0) * 100).toFixed(0)}%</span>
+      </div>
+      <div class="grid grid-4" style="margin-bottom: 12px;">
+        ${['code_available', 'data_available', 'hyperparams_complete', 'compute_specified'].map(k => `
+          <div>
+            <div class="progress-bar"><div class="progress-fill" style="width:${((repro[k] || 0) * 100)}%; background:${(repro[k] || 0) >= 0.5 ? 'var(--green)' : 'var(--orange)'}"></div></div>
+            <div style="font-size:11px; color:var(--text-dim); margin-top:4px;">${k.replace(/_/g, ' ')} — ${((repro[k] || 0) * 100).toFixed(0)}%</div>
+          </div>
+        `).join('')}
+      </div>
+      ${(repro.blockers || []).length ? `<div style="margin-top:8px;"><strong style="color:var(--red);">Blockers:</strong><ul style="margin:4px 0 0 20px;">${repro.blockers.map(b => `<li style="font-size:13px;">${b}</li>`).join('')}</ul></div>` : ''}
+      ${(repro.fixes || []).length ? `<div style="margin-top:8px;"><strong style="color:var(--green);">Suggested Fixes:</strong><ul style="margin:4px 0 0 20px;">${repro.fixes.map(f => `<li style="font-size:13px;">${f}</li>`).join('')}</ul></div>` : ''}
+    </div>
+
+    <div class="card">
+      <div class="card-title">Agent Pipeline Trace</div>
+      <div class="card-subtitle" style="margin-bottom:12px;">${msgs.length} messages from 5 agents</div>
+      ${msgs.map(m => {
+        const role = m.role || 'unknown';
+        return `<div class="agent-msg ${role}"><div class="agent-role">${role} <span class="badge badge-blue" style="margin-left:8px;">${((m.confidence || 1) * 100).toFixed(0)}%</span></div>${m.content}</div>`;
+      }).join('')}
+    </div>
+
+    <div style="margin-top: 12px; display:flex; gap:12px;">
+      <button class="btn btn-primary" onclick="showPage('studio'); loadStudio();">View Artifacts</button>
+      <button class="btn btn-secondary" onclick="productize()">Generate Productization Assets</button>
+      <a class="btn btn-success" href="/api/v2/projects/${project.id}/export.zip" download>Download ZIP Export</a>
+    </div>
+  `;
+}
+
+// Artifact Studio
+async function loadStudio() {
+  if (!currentProject) return;
+  const el = document.getElementById('studio-content');
+  el.innerHTML = '<div class="loading-overlay"><span class="spinner"></span> Loading artifacts...</div>';
+
+  try {
+    const [scaffold, visual, distill] = await Promise.all([
+      apiFetch(`/api/v2/projects/${currentProject.id}/code-scaffold`),
+      apiFetch(`/api/v2/projects/${currentProject.id}/visual-graph`),
+      apiFetch(`/api/v2/projects/${currentProject.id}/distillation`),
+    ]);
+
+    const files = scaffold.files || [];
+    const mermaidDiagrams = visual.mermaid_diagrams || {};
+    const summaries = distill.summaries || {};
+
+    el.innerHTML = `
+      <div class="tabs">
+        <div class="tab active" onclick="switchTab(this, 'studio-code')">Code Scaffold</div>
+        <div class="tab" onclick="switchTab(this, 'studio-visuals')">Visual Graphs</div>
+        <div class="tab" onclick="switchTab(this, 'studio-distill')">Distillation</div>
+        <div class="tab" onclick="switchTab(this, 'studio-summaries')">Summaries</div>
+      </div>
+
+      <div class="tab-content active" id="studio-code">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Generated Files (${files.length})</div>
+            <span class="badge badge-blue">${scaffold.framework}</span>
+          </div>
+          <div class="file-tree">
+            ${files.map(f => `<div class="file-item" onclick="viewFile('${f.path}')">${f.path} <span style="color:var(--text-dim); font-size:11px;">${f.language || ''}</span></div>`).join('')}
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Architecture</div>
+          <div class="mermaid-container"><pre>${scaffold.architecture_mermaid || ''}</pre></div>
+        </div>
+        <div id="file-viewer"></div>
+      </div>
+
+      <div class="tab-content" id="studio-visuals">
+        <div class="card">
+          <div class="card-title">Knowledge Graph</div>
+          <div style="margin-top:12px;">
+            <table>
+              <tr><th>Node</th><th>Type</th></tr>
+              ${(visual.architecture_graph?.nodes || []).map(n => `<tr><td>${n.label}</td><td><span class="badge badge-${n.type === 'problem' ? 'red' : n.type === 'method' ? 'blue' : n.type === 'equation' ? 'purple' : n.type === 'dataset' ? 'green' : 'orange'}">${n.type}</span></td></tr>`).join('')}
+            </table>
+          </div>
+        </div>
+        ${Object.entries(mermaidDiagrams).map(([name, diagram]) => `
+          <div class="card">
+            <div class="card-title">${name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} Diagram</div>
+            <div class="mermaid-container"><pre>${diagram}</pre></div>
+          </div>
+        `).join('')}
+        <div class="card">
+          <div class="card-title">Data Flow Timeline</div>
+          ${(visual.data_flow_timeline || []).map(step => `
+            <div style="display:flex; align-items:center; gap:12px; padding:8px 0; border-bottom:1px solid var(--border);">
+              <div class="badge badge-blue" style="min-width:28px; text-align:center;">${step.step}</div>
+              <div><strong>${step.name}</strong><div style="font-size:12px; color:var(--text-dim);">${step.description}</div></div>
+            </div>
+          `).join('')}
+        </div>
+        <div class="card">
+          <div class="card-title">Failure Mode Map</div>
+          <table>
+            <tr><th>Scenario</th><th>Impact</th><th>Mitigation</th><th>Severity</th></tr>
+            ${(visual.failure_mode_map || []).map(f => `<tr><td>${f.scenario}</td><td>${f.impact}</td><td>${f.mitigation}</td><td><span class="badge badge-${f.severity === 'high' ? 'red' : f.severity === 'medium' ? 'orange' : 'green'}">${f.severity}</span></td></tr>`).join('')}
+          </table>
+        </div>
+      </div>
+
+      <div class="tab-content" id="studio-distill">
+        <div class="card">
+          <div class="card-title">Research Poster</div>
+          <div class="grid grid-2" style="margin-top:12px;">
+            <div><strong>Problem:</strong><p style="font-size:13px; margin-top:4px;">${distill.poster?.problem || ''}</p></div>
+            <div><strong>Method:</strong><p style="font-size:13px; margin-top:4px;">${distill.poster?.method || ''}</p></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Knowledge Cards</div>
+          <div class="grid grid-3" style="margin-top:12px;">
+            ${(distill.knowledge_cards?.concept_cards || []).map(c => `<div class="card" style="margin-bottom:0;"><strong>${c.title}</strong><p style="font-size:12px; color:var(--text-dim); margin-top:4px;">${c.note}</p></div>`).join('')}
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Equation Intuition</div>
+          ${(distill.knowledge_cards?.equation_intuition_panels || []).map(eq => `
+            <div style="padding:10px 0; border-bottom:1px solid var(--border);">
+              <code>${eq.equation}</code>
+              <p style="font-size:13px; margin-top:6px;">${eq.intuition}</p>
+              ${eq.variables ? `<div style="font-size:12px; color:var(--text-dim); margin-top:4px;">Variables: ${Object.entries(eq.variables).map(([k,v]) => `${k}=${v}`).join(', ')}</div>` : ''}
+            </div>
+          `).join('')}
+        </div>
+        <div class="card">
+          <div class="card-title">Extension Engine</div>
+          <div class="grid grid-2">
+            <div>
+              <strong>What's Next</strong>
+              <ul style="margin:8px 0 0 20px; font-size:13px;">${(distill.extension_engine?.what_next || []).map(w => `<li>${w}</li>`).join('')}</ul>
+            </div>
+            <div>
+              <strong>Missing Pieces</strong>
+              <ul style="margin:8px 0 0 20px; font-size:13px;">${(distill.extension_engine?.missing_piece_detector || []).map(m => `<li>${m}</li>`).join('')}</ul>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Learning Path</div>
+          <div class="grid grid-3">
+            ${['beginner', 'intermediate', 'advanced'].map(level => `
+              <div>
+                <strong style="text-transform:capitalize;">${level}</strong>
+                <ol style="margin:8px 0 0 20px; font-size:13px;">${(distill.learning_path?.[level] || []).map(s => `<li>${s}</li>`).join('')}</ol>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+        ${(distill.quiz_cards || []).length ? `
+        <div class="card">
+          <div class="card-title">Quiz Cards</div>
+          ${distill.quiz_cards.map(q => `
+            <div style="padding:10px 0; border-bottom:1px solid var(--border);">
+              <div style="display:flex; justify-content:space-between;"><strong style="font-size:13px;">${q.question}</strong><span class="badge badge-${q.difficulty === 'beginner' ? 'green' : q.difficulty === 'intermediate' ? 'blue' : q.difficulty === 'advanced' ? 'purple' : 'red'}">${q.difficulty}</span></div>
+              <p style="font-size:12px; color:var(--text-dim); margin-top:6px;">${q.answer}</p>
+            </div>
+          `).join('')}
+        </div>` : ''}
+      </div>
+
+      <div class="tab-content" id="studio-summaries">
+        ${Object.entries(summaries).map(([level, text]) => `
+          <div class="card">
+            <div class="card-header"><div class="card-title">${level === 'eli5' ? 'ELI5 (Simple)' : level === 'practitioner' ? 'Practitioner Level' : 'Researcher Level'}</div><span class="badge badge-${level === 'eli5' ? 'green' : level === 'practitioner' ? 'blue' : 'purple'}">${level}</span></div>
+            <div style="white-space:pre-wrap; font-size:14px; line-height:1.6;">${text}</div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  } catch (err) {
+    el.innerHTML = `<div class="card"><p style="color:var(--red);">Error: ${err.message}</p></div>`;
+  }
+}
+
+async function viewFile(path) {
+  if (!currentProject) return;
+  const scaffold = currentProject.code_scaffold || {};
+  const file = (scaffold.files || []).find(f => f.path === path);
+  if (!file) return;
+  const viewer = document.getElementById('file-viewer');
+  viewer.innerHTML = `
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">${path}</div>
+        <span class="badge badge-blue">${file.language || 'text'}</span>
+      </div>
+      <pre>${escapeHtml(file.content || '')}</pre>
+    </div>
+  `;
+}
+
+// Experiment Lab
+async function loadLab() {
+  if (!currentProject) return;
+  const el = document.getElementById('lab-content');
+  el.innerHTML = '<div class="loading-overlay"><span class="spinner"></span> Loading experiments...</div>';
+
+  try {
+    const [experiments, plans] = await Promise.all([
+      apiFetch(`/api/v2/projects/${currentProject.id}/experiments`),
+      apiFetch(`/api/v2/projects/${currentProject.id}/experiments/plan`),
+    ]);
+
+    el.innerHTML = `
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Experiment Plans</div>
+          <span class="badge badge-blue">${(plans.plans || []).length} planned</span>
+        </div>
+        <table>
+          <tr><th>Name</th><th>Purpose</th><th>Priority</th></tr>
+          ${(plans.plans || []).map(p => `
+            <tr>
+              <td><strong>${p.name}</strong></td>
+              <td style="font-size:12px;">${p.purpose}</td>
+              <td><span class="badge badge-${p.priority <= 2 ? 'green' : 'blue'}">P${p.priority}</span></td>
+            </tr>
+          `).join('')}
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Experiment Runs</div>
+          <button class="btn btn-sm btn-primary" onclick="createExperiment()">New Experiment</button>
+        </div>
+        ${(experiments.experiments || []).length === 0 ? '<p style="color:var(--text-dim); font-size:13px;">No experiments run yet. Create one to get started.</p>' :
+        `<table>
+          <tr><th>ID</th><th>Status</th><th>Config</th></tr>
+          ${experiments.experiments.map(e => `
+            <tr>
+              <td style="font-family:monospace; font-size:12px;">${(e.id || '').slice(0, 8)}</td>
+              <td><span class="badge badge-${e.status === 'completed' ? 'green' : e.status === 'running' ? 'blue' : 'orange'}">${e.status}</span></td>
+              <td style="font-size:12px;">${JSON.stringify(e.config || {}).slice(0, 80)}</td>
+            </tr>
+          `).join('')}
+        </table>`}
+      </div>
+    `;
+  } catch (err) {
+    el.innerHTML = `<div class="card"><p style="color:var(--red);">Error: ${err.message}</p></div>`;
+  }
+}
+
+async function createExperiment() {
+  if (!currentProject) return;
+  const spec = currentProject.paper_spec || {};
+  const config = spec.hyperparameters || {};
+  config.epochs = config.epochs || 1;
+  try {
+    await apiFetch(`/api/v2/projects/${currentProject.id}/experiments`, {
+      method: 'POST',
+      body: JSON.stringify({ config, expected_metrics: {} }),
+    });
+    toast('Experiment created!');
+    loadLab();
+  } catch (err) { toast('Error: ' + err.message); }
+}
+
+// Productization
+async function productize() {
+  if (!currentProject) return;
+  toast('Generating productization assets...');
+  try {
+    const result = await apiFetch(`/api/v2/projects/${currentProject.id}/productize`, {
+      method: 'POST',
+      body: JSON.stringify({ architecture_type: 'server' }),
+    });
+    currentProject.api_contract = result.api_contract;
+    currentProject.deployment_plan = result.deployment_plan;
+    currentProject.launch_package = result.launch_package;
+    toast('Productization complete!');
+  } catch (err) { toast('Error: ' + err.message); }
+}
+
+// API Builder
+async function loadAPI() {
+  if (!currentProject) return;
+  const el = document.getElementById('api-content');
+
+  try {
+    const contract = await apiFetch(`/api/v2/projects/${currentProject.id}/api-contract`);
+    if (!contract || !contract.endpoints || contract.endpoints.length === 0) {
+      el.innerHTML = `<div class="card"><p style="color:var(--text-dim);">No API contract yet. <button class="btn btn-sm btn-primary" onclick="productize().then(() => loadAPI())">Generate Now</button></p></div>`;
+      return;
+    }
+
+    el.innerHTML = `
+      <div class="tabs">
+        <div class="tab active" onclick="switchTab(this, 'api-endpoints')">Endpoints</div>
+        <div class="tab" onclick="switchTab(this, 'api-sdk')">SDK Stubs</div>
+        <div class="tab" onclick="switchTab(this, 'api-spec')">OpenAPI Spec</div>
+      </div>
+
+      <div class="tab-content active" id="api-endpoints">
+        <div class="card">
+          <div class="card-title">API Endpoints</div>
+          <table>
+            <tr><th>Method</th><th>Path</th><th>Summary</th></tr>
+            ${(contract.endpoints || []).map(ep => `
+              <tr>
+                <td><span class="badge badge-${ep.method === 'GET' ? 'green' : 'blue'}">${ep.method}</span></td>
+                <td><code>${ep.path}</code></td>
+                <td style="font-size:13px;">${ep.summary}</td>
+              </tr>
+            `).join('')}
+          </table>
+        </div>
+        <div class="grid grid-2">
+          <div class="card">
+            <div class="card-title">Rate Limits</div>
+            ${Object.entries(contract.rate_limits || {}).map(([k,v]) => `<div style="display:flex; justify-content:space-between; padding:4px 0; font-size:13px;"><span>${k}</span><span>${v} req/min</span></div>`).join('')}
+          </div>
+          <div class="card">
+            <div class="card-title">Auth Config</div>
+            ${Object.entries(contract.auth_config || {}).map(([k,v]) => `<div style="display:flex; justify-content:space-between; padding:4px 0; font-size:13px;"><span>${k}</span><span>${v}</span></div>`).join('')}
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-content" id="api-sdk">
+        ${Object.entries(contract.sdk_stubs || {}).map(([lang, code]) => `
+          <div class="card">
+            <div class="card-header"><div class="card-title">${lang.charAt(0).toUpperCase() + lang.slice(1)} SDK</div></div>
+            <pre>${escapeHtml(code)}</pre>
+          </div>
+        `).join('')}
+      </div>
+
+      <div class="tab-content" id="api-spec">
+        <div class="card">
+          <div class="card-title">OpenAPI 3.0 Specification</div>
+          <pre>${escapeHtml(JSON.stringify(contract.openapi_spec || {}, null, 2))}</pre>
+        </div>
+      </div>
+    `;
+  } catch (err) {
+    el.innerHTML = `<div class="card"><p style="color:var(--red);">Error: ${err.message}</p></div>`;
+  }
+}
+
+// Launch Center
+async function loadLaunch() {
+  if (!currentProject) return;
+  const el = document.getElementById('launch-content');
+
+  try {
+    const [deploy, launch] = await Promise.all([
+      apiFetch(`/api/v2/projects/${currentProject.id}/deployment-plan`),
+      apiFetch(`/api/v2/projects/${currentProject.id}/launch-package`),
+    ]);
+
+    if (!deploy.architecture_type && !launch.web_deploy) {
+      el.innerHTML = `<div class="card"><p style="color:var(--text-dim);">No deployment plan yet. <button class="btn btn-sm btn-primary" onclick="productize().then(() => loadLaunch())">Generate Now</button></p></div>`;
+      return;
+    }
+
+    el.innerHTML = `
+      <div class="grid grid-2" style="margin-bottom:16px;">
+        <div class="card stat-card">
+          <div class="stat-value" style="color:var(--accent-light);">${deploy.architecture_type || 'server'}</div>
+          <div class="stat-label">Architecture Type</div>
+        </div>
+        <div class="card stat-card">
+          <div class="stat-value" style="color:var(--green);">$${deploy.estimated_cost_monthly || 0}/mo</div>
+          <div class="stat-label">Estimated Cost</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Security Checklist</div>
+        ${(deploy.security_checklist || []).map(item => `
+          <div class="checklist-item">
+            <div class="checklist-check">${item.status === 'required' ? '!' : '?'}</div>
+            <div><span>${item.item}</span> <span class="badge badge-${item.priority === 'high' ? 'red' : item.priority === 'medium' ? 'orange' : 'green'}" style="margin-left:8px;">${item.priority}</span></div>
+          </div>
+        `).join('')}
+      </div>
+
+      <div class="grid grid-2">
+        <div class="card">
+          <div class="card-title">Web Deployment</div>
+          ${(launch.web_deploy?.deployment_steps || []).map((s, i) => `
+            <div class="checklist-item"><div class="checklist-check">${i + 1}</div><span>${s}</span></div>
+          `).join('')}
+        </div>
+        <div class="card">
+          <div class="card-title">Mobile Release</div>
+          <div style="margin-bottom:8px;"><strong>Platform:</strong> ${launch.mobile_release?.platform || 'N/A'}</div>
+          <div style="margin-bottom:8px;"><strong>Package:</strong> <code>${launch.mobile_release?.package_name || ''}</code></div>
+          <div><strong>Integrations:</strong></div>
+          ${(launch.mobile_release?.integrations || []).map(i => `<div class="checklist-item"><div class="checklist-check">+</div><span>${i}</span></div>`).join('')}
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Release Checklist</div>
+        ${(launch.release_checklist || []).map(item => `
+          <div class="checklist-item">
+            <div class="checklist-check">${item.required ? '!' : '-'}</div>
+            <div><span>${item.item}</span>
+              <span class="badge badge-blue" style="margin-left:8px;">${item.category}</span>
+              ${item.required ? '<span class="badge badge-red" style="margin-left:4px;">required</span>' : ''}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+
+      <div class="card">
+        <div class="card-title">Container Config</div>
+        <pre>${escapeHtml(JSON.stringify(deploy.container_config || {}, null, 2))}</pre>
+      </div>
+
+      <div style="margin-top:12px;">
+        <a class="btn btn-success" href="/api/v2/projects/${currentProject.id}/export.zip" download>Download Full Launch Package</a>
+      </div>
+    `;
+  } catch (err) {
+    el.innerHTML = `<div class="card"><p style="color:var(--red);">Error: ${err.message}</p></div>`;
+  }
+}
+
+// Team Review
+async function loadReview() {
+  if (!currentProject) return;
+  const el = document.getElementById('review-content');
+
+  try {
+    const reviews = await apiFetch(`/api/v2/projects/${currentProject.id}/reviews`);
+
+    el.innerHTML = `
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Reviews</div>
+          <button class="btn btn-sm btn-primary" onclick="addReview()">Add Review</button>
+        </div>
+        ${(reviews.reviews || []).length === 0 ? '<p style="color:var(--text-dim); font-size:13px;">No reviews yet.</p>' :
+        (reviews.reviews || []).map(r => `
+          <div style="padding:12px 0; border-bottom:1px solid var(--border);">
+            <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+              <strong style="font-size:13px;">${r.author || 'anonymous'}</strong>
+              <span class="badge badge-${r.status === 'approved' ? 'green' : r.status === 'rejected' ? 'red' : 'orange'}">${r.status}</span>
+            </div>
+            <p style="font-size:13px;">${r.content}</p>
+            ${r.artifact_path ? `<div style="font-size:12px; color:var(--text-dim); margin-top:4px;">File: ${r.artifact_path}${r.line_number ? `:${r.line_number}` : ''}</div>` : ''}
+          </div>
+        `).join('')}
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Approval</div>
+        </div>
+        <p style="font-size:13px; color:var(--text-dim); margin-bottom:12px;">Approve this project for production export. All reviews should be resolved first.</p>
+        <button class="btn btn-success" onclick="approveProject()">Approve for Production</button>
+      </div>
+    `;
+  } catch (err) {
+    el.innerHTML = `<div class="card"><p style="color:var(--red);">Error: ${err.message}</p></div>`;
+  }
+}
+
+async function addReview() {
+  const content = prompt('Review comment:');
+  if (!content) return;
+  const author = prompt('Your name:', 'reviewer');
+  try {
+    await apiFetch(`/api/v2/projects/${currentProject.id}/reviews`, {
+      method: 'POST',
+      body: JSON.stringify({ author, content }),
+    });
+    toast('Review added!');
+    loadReview();
+  } catch (err) { toast('Error: ' + err.message); }
+}
+
+async function approveProject() {
+  if (!currentProject) return;
+  const approver = prompt('Approver name:', 'admin');
+  if (!approver) return;
+  try {
+    const result = await apiFetch(`/api/v2/projects/${currentProject.id}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ approver }),
+    });
+    if (result.error) { toast('Error: ' + result.error); }
+    else { toast('Project approved!'); }
+  } catch (err) { toast('Error: ' + err.message); }
+}
+
+// Utilities
+function switchTab(el, contentId) {
+  const parent = el.closest('.page') || el.closest('#studio-content') || el.closest('#api-content') || document.getElementById('main-content');
+  const tabBar = el.parentElement;
+  tabBar.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+
+  // Find sibling tab-contents
+  let container = tabBar.parentElement;
+  container.querySelectorAll(':scope > .tab-content').forEach(tc => tc.classList.remove('active'));
+  const target = document.getElementById(contentId);
+  if (target) target.classList.add('active');
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+</script>
+</body>
+</html>
