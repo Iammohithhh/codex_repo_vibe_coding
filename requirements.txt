@@ -1,1 +1,6 @@
-# No third-party dependencies required for Phase 1 MVP runtime.
+# Paper2Product 2.0 — No third-party dependencies required for runtime.
+# Uses only Python standard library (http.server, sqlite3, json, dataclasses, etc.)
+#
+# Optional dependencies for generated code output:
+# torch>=2.1.0          # PyTorch (for generated model code)
+# tensorflow>=2.15.0    # TensorFlow (for generated model code)
