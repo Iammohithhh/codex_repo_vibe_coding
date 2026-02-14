@@ -1,0 +1,16 @@
+[build]
+builder = "dockerfile"
+
+[deploy]
+startCommand = "python -m paper2product"
+restartPolicy = "on_failure"
+healthchecks = {enabled = true}
+
+[env]
+PORT = "8000"
+ENVIRONMENT = "production"
+PYTHONUNBUFFERED = "1"
+
+[docs]
+name = "Paper2Product 2.0 Backend"
+description = "Python backend service for Paper2Product 2.0"
