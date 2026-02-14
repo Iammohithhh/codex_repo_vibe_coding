@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+paper2product.db
+object_store/
