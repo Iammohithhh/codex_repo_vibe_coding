@@ -1,7 +1,7 @@
-"""Skeptic Agent — Challenges missing details and low-confidence steps.
+"""Skeptic Agent — AI-powered critical review of research papers.
 
-Reviews the PaperSpec for completeness, flags missing hyperparameters,
-questionable claims, insufficient baselines, and reproducibility risks.
+Uses Groq LLM for nuanced reproducibility assessment and gap detection.
+Falls back to rule-based checks when GROQ_API_KEY is not set.
 """
 from __future__ import annotations
 
@@ -13,10 +13,84 @@ from ..models.schema import (
     PaperSpec,
     ReproducibilityScore,
 )
+from ..llm.groq_client import groq_json, is_groq_available
 
+
+# ---------------------------------------------------------------------------
+# AI-powered review via Groq
+# ---------------------------------------------------------------------------
+
+def _ai_review(spec: PaperSpec) -> Tuple[ReproducibilityScore, List[str]] | None:
+    """Use Groq LLM to perform deep critical review."""
+    if not is_groq_available():
+        return None
+
+    spec_summary = (
+        f"Problem: {spec.problem}\n"
+        f"Method: {spec.method}\n"
+        f"Equations: {[eq.raw for eq in spec.key_equations]}\n"
+        f"Datasets: {spec.datasets}\n"
+        f"Metrics: {spec.metrics}\n"
+        f"Hyperparameters: {spec.hyperparameters}\n"
+        f"Architecture: {spec.architecture_components}\n"
+        f"Claims: {spec.claims}\n"
+        f"Limitations: {spec.limitations}\n"
+        f"Baselines: {spec.baselines}\n"
+        f"Training details: {spec.training_details}\n"
+        f"Assumptions: {spec.assumptions}"
+    )
+
+    prompt = f"""You are a rigorous ML paper reviewer. Critically analyze this extracted paper specification for reproducibility and scientific quality.
+
+{spec_summary}
+
+Return a JSON object:
+{{
+  "overall_score": 0.0-1.0,
+  "code_available": 0.0-1.0,
+  "data_available": 0.0-1.0,
+  "hyperparams_complete": 0.0-1.0,
+  "compute_specified": 0.0-1.0,
+  "results_variance": 0.0-1.0,
+  "issues": ["list of specific issues found"],
+  "blockers": ["critical blockers preventing reproduction"],
+  "fixes": ["specific actionable fixes for each blocker"],
+  "strengths": ["what the paper does well"],
+  "missing_details": ["details that are missing but needed for reproduction"]
+}}
+
+Be specific and actionable. Score harshly but fairly. A perfect paper gets 0.9, not 1.0."""
+
+    result = groq_json([
+        {"role": "system", "content": "You are a critical ML paper reviewer focused on reproducibility. Return valid JSON."},
+        {"role": "user", "content": prompt},
+    ])
+
+    if result is None:
+        return None
+
+    try:
+        score = ReproducibilityScore(
+            overall=min(max(float(result.get("overall_score", 0.5)), 0.0), 1.0),
+            code_available=min(max(float(result.get("code_available", 0.0)), 0.0), 1.0),
+            data_available=min(max(float(result.get("data_available", 0.0)), 0.0), 1.0),
+            hyperparams_complete=min(max(float(result.get("hyperparams_complete", 0.0)), 0.0), 1.0),
+            compute_specified=min(max(float(result.get("compute_specified", 0.0)), 0.0), 1.0),
+            results_variance=min(max(float(result.get("results_variance", 0.5)), 0.0), 1.0),
+            blockers=result.get("blockers", []),
+            fixes=result.get("fixes", []),
+        )
+        issues = result.get("issues", []) + result.get("missing_details", [])
+        return score, issues
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Heuristic fallback (original logic)
+# ---------------------------------------------------------------------------
 
 def _check_hyperparams(spec: PaperSpec) -> Tuple[List[str], List[str]]:
-    """Check for missing critical hyperparameters."""
     required = ["learning_rate", "batch_size", "epochs", "optimizer"]
     missing = []
     found = []
@@ -29,7 +103,6 @@ def _check_hyperparams(spec: PaperSpec) -> Tuple[List[str], List[str]]:
 
 
 def _check_baselines(spec: PaperSpec) -> List[str]:
-    """Flag baseline comparison issues."""
     issues = []
     if len(spec.baselines) < 2:
         issues.append("Insufficient baselines: fewer than 2 comparison methods found.")
@@ -39,7 +112,6 @@ def _check_baselines(spec: PaperSpec) -> List[str]:
 
 
 def _check_evaluation(spec: PaperSpec) -> List[str]:
-    """Flag evaluation methodology issues."""
     issues = []
     if len(spec.metrics) < 2:
         issues.append("Single metric evaluation: consider multiple metrics for robustness.")
@@ -52,7 +124,6 @@ def _check_evaluation(spec: PaperSpec) -> List[str]:
 
 
 def _check_reproducibility_gaps(spec: PaperSpec) -> List[str]:
-    """Identify reproducibility blockers."""
     gaps = []
     if not spec.hyperparameters:
         gaps.append("CRITICAL: No hyperparameters specified — reproduction impossible without guessing.")
@@ -66,16 +137,13 @@ def _check_reproducibility_gaps(spec: PaperSpec) -> List[str]:
 
 
 def _compute_reproducibility_score(spec: PaperSpec, issues: List[str]) -> ReproducibilityScore:
-    """Compute a reproducibility scorecard."""
     found_params, missing_params = _check_hyperparams(spec)
-
-    code_available = 0.3 if spec.hyperparameters else 0.0  # No actual code repo check
+    code_available = 0.3 if spec.hyperparameters else 0.0
     data_available = min(len(spec.datasets) * 0.25, 1.0)
     hyperparams_complete = len(found_params) / max(len(found_params) + len(missing_params), 1)
     compute_specified = 0.5 if spec.training_details else 0.0
-    results_variance = 0.5  # Default moderate confidence
+    results_variance = 0.5
 
-    # Penalize for issues
     penalty = min(len(issues) * 0.05, 0.3)
     overall = max(
         0.0,
@@ -85,15 +153,12 @@ def _compute_reproducibility_score(spec: PaperSpec, issues: List[str]) -> Reprod
 
     blockers = []
     fixes = []
-
     if missing_params:
         blockers.append(f"Missing hyperparameters: {', '.join(missing_params)}")
         fixes.append(f"Add defaults for: {', '.join(missing_params)} (use common values from similar papers)")
-
     if len(spec.datasets) < 2:
         blockers.append("Limited dataset coverage")
         fixes.append("Add evaluation on at least 2 standard benchmarks")
-
     for issue in issues:
         if "CRITICAL" in issue:
             blockers.append(issue)
@@ -110,65 +175,64 @@ def _compute_reproducibility_score(spec: PaperSpec, issues: List[str]) -> Reprod
     )
 
 
+def _heuristic_review(spec: PaperSpec) -> Tuple[ReproducibilityScore, List[str]]:
+    """Original rule-based review."""
+    all_issues: List[str] = []
+    _, missing = _check_hyperparams(spec)
+    if missing:
+        all_issues.append(f"Missing hyperparameters: {', '.join(missing)}.")
+    all_issues.extend(_check_baselines(spec))
+    all_issues.extend(_check_evaluation(spec))
+    all_issues.extend(_check_reproducibility_gaps(spec))
+    score = _compute_reproducibility_score(spec, all_issues)
+    return score, all_issues
+
+
+# ---------------------------------------------------------------------------
+# Main entry point
+# ---------------------------------------------------------------------------
+
 def review_paper(spec: PaperSpec) -> Tuple[ReproducibilityScore, List[AgentMessage]]:
-    """Main skeptic entry point. Returns (ReproducibilityScore, agent_messages)."""
+    """Main skeptic entry point. Uses AI review with heuristic fallback."""
     messages: List[AgentMessage] = []
 
+    ai_mode = is_groq_available()
     messages.append(AgentMessage(
         role=AgentRole.SKEPTIC,
-        content="Starting critical review of extracted paper specification.",
-        metadata={"phase": "start"},
+        content=f"Starting critical review [{'AI-powered via Groq' if ai_mode else 'rule-based mode'}].",
+        metadata={"phase": "start", "mode": "ai" if ai_mode else "heuristic"},
     ))
 
-    all_issues: List[str] = []
+    # Try AI review
+    ai_result = None
+    if ai_mode:
+        ai_result = _ai_review(spec)
 
-    # Check hyperparameters
-    found, missing = _check_hyperparams(spec)
-    if missing:
-        msg = f"Missing hyperparameters: {', '.join(missing)}. Found: {', '.join(found) if found else 'none'}."
-        all_issues.append(msg)
+    if ai_result is not None:
+        score, all_issues = ai_result
         messages.append(AgentMessage(
             role=AgentRole.SKEPTIC,
-            content=msg,
-            metadata={"check": "hyperparameters", "missing": missing, "found": found},
-            confidence=0.9,
+            content="AI-powered deep review complete — used Groq LLM for nuanced assessment.",
+            metadata={"mode": "ai"},
+            confidence=0.90,
         ))
+    else:
+        score, all_issues = _heuristic_review(spec)
+        if ai_mode:
+            messages.append(AgentMessage(
+                role=AgentRole.SKEPTIC,
+                content="AI review failed — falling back to rule-based checks.",
+                metadata={"mode": "heuristic_fallback"},
+                confidence=0.75,
+            ))
 
-    # Check baselines
-    baseline_issues = _check_baselines(spec)
-    all_issues.extend(baseline_issues)
-    for issue in baseline_issues:
+    for issue in all_issues:
         messages.append(AgentMessage(
             role=AgentRole.SKEPTIC,
             content=issue,
-            metadata={"check": "baselines"},
-            confidence=0.8,
-        ))
-
-    # Check evaluation
-    eval_issues = _check_evaluation(spec)
-    all_issues.extend(eval_issues)
-    for issue in eval_issues:
-        messages.append(AgentMessage(
-            role=AgentRole.SKEPTIC,
-            content=issue,
-            metadata={"check": "evaluation"},
+            metadata={"check": "ai_review" if ai_result else "heuristic"},
             confidence=0.85,
         ))
-
-    # Check reproducibility gaps
-    repro_gaps = _check_reproducibility_gaps(spec)
-    all_issues.extend(repro_gaps)
-    for gap in repro_gaps:
-        messages.append(AgentMessage(
-            role=AgentRole.SKEPTIC,
-            content=gap,
-            metadata={"check": "reproducibility"},
-            confidence=0.9,
-        ))
-
-    # Compute score
-    score = _compute_reproducibility_score(spec, all_issues)
 
     messages.append(AgentMessage(
         role=AgentRole.SKEPTIC,

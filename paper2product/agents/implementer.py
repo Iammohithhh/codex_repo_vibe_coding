@@ -1,12 +1,8 @@
-"""Implementer Agent — Generates modular code and interfaces.
+"""Implementer Agent — AI-powered code scaffold generation.
 
-Produces framework-specific code scaffolds with proper structure:
-  core/ algorithm modules
-  train/, eval/, inference/ pipelines
-  config presets
-  unit and regression tests
-  CI workflow
-  Dockerfile
+Uses Groq LLM to generate paper-specific model architectures, training loops,
+and evaluation code. Falls back to template-based generation when
+GROQ_API_KEY is not set.
 """
 from __future__ import annotations
 
@@ -22,10 +18,100 @@ from ..models.schema import (
     PaperSpec,
     TraceLink,
 )
+from ..llm.groq_client import groq_chat, is_groq_available
 
+
+# ---------------------------------------------------------------------------
+# AI-powered code generation via Groq
+# ---------------------------------------------------------------------------
+
+def _ai_generate_model_code(spec: PaperSpec, framework: str) -> str | None:
+    """Use Groq LLM to generate paper-specific model architecture."""
+    if not is_groq_available():
+        return None
+
+    equations_str = "\n".join(f"- {eq.raw}: {eq.intuition}" for eq in spec.key_equations)
+    arch_str = ", ".join(spec.architecture_components) if spec.architecture_components else "not specified"
+
+    prompt = f"""Generate a {framework} model implementation for this research paper.
+
+Problem: {spec.problem}
+Method: {spec.method}
+Architecture components: {arch_str}
+Key equations:
+{equations_str}
+Hyperparameters: {spec.hyperparameters}
+
+Requirements:
+1. Implement the ACTUAL architecture described, not a generic feedforward network
+2. Include proper layer initialization
+3. Add the loss function from the paper's equations
+4. Include a build_model(config) factory function
+5. Include a compute_loss(model, x, y) function
+6. Use proper {framework} idioms
+7. Add docstrings referencing the paper's method
+
+Return ONLY the Python code, no markdown fences."""
+
+    result = groq_chat([
+        {"role": "system", "content": f"You are an expert {framework} developer. Write clean, runnable {framework} code. Return only Python code, no markdown."},
+        {"role": "user", "content": prompt},
+    ], max_tokens=3000)
+
+    if result and ("class " in result or "def " in result):
+        # Strip markdown fences if present
+        code = result.strip()
+        if code.startswith("```"):
+            lines = code.split("\n")
+            code = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+        return code
+    return None
+
+
+def _ai_generate_train_script(spec: PaperSpec, framework: str) -> str | None:
+    """Use Groq LLM to generate paper-specific training pipeline."""
+    if not is_groq_available():
+        return None
+
+    hp = spec.hyperparameters
+    prompt = f"""Generate a {framework} training script for this paper.
+
+Method: {spec.method}
+Hyperparameters: {hp}
+Datasets: {spec.datasets}
+Metrics: {spec.metrics}
+
+Requirements:
+1. Import from core.model (build_model, compute_loss)
+2. Load config from configs/default.json
+3. Use the paper's actual hyperparameters
+4. Include proper training loop with logging
+5. Save checkpoints
+6. Include a main block
+7. Use proper {framework} training patterns (DataLoader for PyTorch, tf.data for TF)
+
+Return ONLY Python code, no markdown fences."""
+
+    result = groq_chat([
+        {"role": "system", "content": f"You are an expert {framework} developer. Write clean, runnable training code."},
+        {"role": "user", "content": prompt},
+    ], max_tokens=2500)
+
+    if result and "def " in result:
+        code = result.strip()
+        if code.startswith("```"):
+            lines = code.split("\n")
+            code = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+        return code
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Template-based fallback (original logic)
+# ---------------------------------------------------------------------------
 
 def _build_model_code(spec: PaperSpec, framework: str) -> str:
-    """Generate the core model module."""
+    """Generate the core model module (template-based fallback)."""
     equations_comment = "\n".join(
         f"    # Equation: {eq.raw}\n    # Intuition: {eq.intuition}"
         for eq in spec.key_equations
@@ -155,7 +241,7 @@ def compute_loss(model: PaperModel, x: torch.Tensor, y: torch.Tensor) -> torch.T
 
 
 def _build_train_script(spec: PaperSpec, framework: str) -> str:
-    """Generate training pipeline."""
+    """Generate training pipeline (template-based fallback)."""
     hp = spec.hyperparameters
     lr = hp.get("learning_rate", "1e-3")
     bs = hp.get("batch_size", 32)
@@ -189,12 +275,10 @@ def train(config: dict):
     optimizer = tf.keras.optimizers.{optimizer}(learning_rate=float(config.get("learning_rate", {lr})))
     epochs = config.get("epochs", {epochs})
 
-    # Placeholder: replace with actual dataset loading
     print(f"Training for {{epochs}} epochs with {optimizer} optimizer")
     print(f"Config: {{config}}")
 
     for epoch in range(epochs):
-        # Simulated training step
         loss = 1.0 / (epoch + 1)
         print(f"Epoch {{epoch+1}}/{{epochs}} — loss: {{loss:.4f}}")
 
@@ -239,7 +323,6 @@ def train(config: dict):
 
     model.train()
     for epoch in range(epochs):
-        # Simulated training step — replace with actual data loader
         x = torch.randn(config.get("batch_size", {bs}), config.get("input_dim", 512)).to(device)
         y = torch.randint(0, config.get("output_dim", 10), (config.get("batch_size", {bs}),)).to(device)
 
@@ -263,7 +346,6 @@ if __name__ == "__main__":
 
 
 def _build_eval_script(spec: PaperSpec, framework: str) -> str:
-    """Generate evaluation pipeline."""
     metrics_list = ", ".join(spec.metrics) if spec.metrics else "accuracy"
 
     return f'''"""Evaluation pipeline.
@@ -284,7 +366,6 @@ def evaluate(model, test_data=None, config=None):
     metrics = {spec.metrics if spec.metrics else ["accuracy"]}
 
     for metric in metrics:
-        # Placeholder: replace with actual metric computation
         results[metric] = 0.0
 
     print(f"Evaluation results: {{results}}")
@@ -312,7 +393,6 @@ if __name__ == "__main__":
 
 
 def _build_inference_script(spec: PaperSpec, framework: str) -> str:
-    """Generate inference pipeline."""
     if framework == "tensorflow":
         return '''"""Inference pipeline — TensorFlow.
 
@@ -410,7 +490,6 @@ if __name__ == "__main__":
 
 
 def _build_config(spec: PaperSpec) -> str:
-    """Generate default config JSON."""
     hp = spec.hyperparameters.copy()
     hp.setdefault("learning_rate", 1e-3)
     hp.setdefault("batch_size", 32)
@@ -420,13 +499,11 @@ def _build_config(spec: PaperSpec) -> str:
     hp.setdefault("hidden_dim", 256)
     hp.setdefault("output_dim", 10)
     hp.setdefault("dropout", 0.1)
-
     import json
     return json.dumps(hp, indent=2)
 
 
 def _build_tests(spec: PaperSpec, framework: str) -> str:
-    """Generate test suite."""
     if framework == "tensorflow":
         return '''"""Test suite for generated model."""
 import unittest
@@ -516,7 +593,6 @@ if __name__ == "__main__":
 
 
 def _build_ci_workflow(framework: str) -> str:
-    """Generate GitHub Actions CI workflow."""
     pip_deps = "torch torchvision" if framework == "pytorch" else "tensorflow"
     return f'''name: CI
 
@@ -546,9 +622,7 @@ jobs:
 
 
 def _build_dockerfile(framework: str) -> str:
-    """Generate Dockerfile for containerized execution."""
     base = "pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime" if framework == "pytorch" else "tensorflow/tensorflow:2.15.0-gpu"
-    pip_deps = "torch" if framework == "pytorch" else "tensorflow"
     return f'''FROM {base}
 
 WORKDIR /app
@@ -565,7 +639,6 @@ CMD ["python", "inference/serve.py"]
 
 
 def _build_readme(spec: PaperSpec, framework: str) -> str:
-    """Generate comprehensive README."""
     equations_md = "\n".join(f"- `{eq.raw}` — {eq.intuition}" for eq in spec.key_equations)
     datasets_md = ", ".join(spec.datasets) if spec.datasets else "N/A"
     metrics_md = ", ".join(spec.metrics) if spec.metrics else "N/A"
@@ -640,24 +713,55 @@ python inference/serve.py
 
 
 def _build_requirements(framework: str) -> str:
-    """Generate requirements.txt."""
     if framework == "tensorflow":
         return "tensorflow>=2.15.0\nnumpy>=1.24.0\nscikit-learn>=1.3.0\n"
     return "torch>=2.1.0\ntorchvision>=0.16.0\nnumpy>=1.24.0\nscikit-learn>=1.3.0\n"
 
 
+# ---------------------------------------------------------------------------
+# Main entry point
+# ---------------------------------------------------------------------------
+
 def generate_scaffold(spec: PaperSpec, framework: str = "pytorch") -> tuple[CodeScaffold, list[AgentMessage]]:
-    """Main implementer entry point."""
+    """Main implementer entry point. Uses AI code generation with template fallback."""
     messages: list[AgentMessage] = []
 
+    ai_mode = is_groq_available()
     messages.append(AgentMessage(
         role=AgentRole.IMPLEMENTER,
-        content=f"Generating {framework} code scaffold for: {spec.method[:80]}",
-        metadata={"framework": framework, "phase": "start"},
+        content=f"Generating {framework} code scaffold [{'AI-powered via Groq' if ai_mode else 'template mode'}]",
+        metadata={"framework": framework, "phase": "start", "mode": "ai" if ai_mode else "template"},
     ))
 
     problem_cite = spec.citations.get("problem", Citation("", ""))
     method_cite = spec.citations.get("method", Citation("", ""))
+
+    # Try AI-generated model code, fall back to template
+    model_code = None
+    train_code = None
+    if ai_mode:
+        model_code = _ai_generate_model_code(spec, framework)
+        train_code = _ai_generate_train_script(spec, framework)
+
+    if model_code:
+        messages.append(AgentMessage(
+            role=AgentRole.IMPLEMENTER,
+            content="AI generated paper-specific model architecture via Groq LLM.",
+            metadata={"mode": "ai", "component": "model"},
+            confidence=0.88,
+        ))
+    else:
+        model_code = _build_model_code(spec, framework)
+
+    if train_code:
+        messages.append(AgentMessage(
+            role=AgentRole.IMPLEMENTER,
+            content="AI generated paper-specific training pipeline via Groq LLM.",
+            metadata={"mode": "ai", "component": "train"},
+            confidence=0.85,
+        ))
+    else:
+        train_code = _build_train_script(spec, framework)
 
     files = [
         GeneratedFile(
@@ -669,7 +773,7 @@ def generate_scaffold(spec: PaperSpec, framework: str = "pytorch") -> tuple[Code
         ),
         GeneratedFile(
             path="core/model.py",
-            content=_build_model_code(spec, framework),
+            content=model_code,
             artifact_type=ArtifactType.CODE,
             trace_links=[TraceLink("core/model.py", citations=[method_cite])],
         ),
@@ -680,7 +784,7 @@ def generate_scaffold(spec: PaperSpec, framework: str = "pytorch") -> tuple[Code
         ),
         GeneratedFile(
             path="train/train.py",
-            content=_build_train_script(spec, framework),
+            content=train_code,
             artifact_type=ArtifactType.CODE,
             trace_links=[TraceLink("train/train.py", citations=[method_cite])],
         ),
@@ -759,7 +863,7 @@ def generate_scaffold(spec: PaperSpec, framework: str = "pytorch") -> tuple[Code
         architecture_mermaid=mermaid,
         ci_workflow=_build_ci_workflow(framework),
         docker_file=_build_dockerfile(framework),
-        confidence=0.75,
+        confidence=0.85 if ai_mode and model_code else 0.75,
     )
 
     messages.append(AgentMessage(

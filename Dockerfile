@@ -53,6 +53,8 @@ ENV P2P_DB_PATH=/app/data/paper2product.db
 ENV P2P_SECRET=change-me-in-production
 ENV P2P_HOST=0.0.0.0
 ENV P2P_PORT=8000
+ENV GROQ_API_KEY=""
+ENV GROQ_MODEL=llama-3.3-70b-versatile
 
 EXPOSE 8000 3000
 

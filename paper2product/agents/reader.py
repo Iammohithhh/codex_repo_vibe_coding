@@ -1,11 +1,12 @@
-"""Reader Agent — Extracts structured facts from a research paper.
+"""Reader Agent — AI-powered structured extraction from research papers.
 
-Parses title, abstract, and method text to produce a comprehensive PaperSpec
-with claims, equations, datasets, metrics, assumptions, hyperparameters,
-architecture components, and sentence-level citations.
+Uses Groq LLM to intelligently extract equations, claims, datasets, metrics,
+hyperparameters, and architecture components. Falls back to heuristic
+extraction when GROQ_API_KEY is not set.
 """
 from __future__ import annotations
 
+import json
 import re
 from typing import Any, Dict, List
 
@@ -17,10 +18,97 @@ from ..models.schema import (
     PaperSpec,
     IngestRequest,
 )
+from ..llm.groq_client import groq_json, is_groq_available
 
 
-def _extract_equations(text: str) -> List[Equation]:
-    """Extract equations with variable parsing."""
+# ---------------------------------------------------------------------------
+# AI-powered extraction via Groq
+# ---------------------------------------------------------------------------
+
+def _ai_extract(request: IngestRequest) -> PaperSpec | None:
+    """Use Groq LLM to extract structured information from the paper."""
+    if not is_groq_available():
+        return None
+
+    prompt = f"""You are a research paper analysis AI. Extract structured information from this paper.
+
+Title: {request.title}
+Abstract: {request.abstract}
+Method: {request.method_text}
+
+Return a JSON object with these fields:
+{{
+  "problem": "one-sentence problem statement",
+  "method": "one-sentence method description",
+  "equations": [
+    {{"raw": "equation string", "intuition": "what it does in plain English", "variables": {{"var": "meaning"}}, "source_section": "method"}}
+  ],
+  "datasets": ["dataset names found or implied"],
+  "metrics": ["evaluation metrics found or implied"],
+  "claims": ["key claims the paper makes"],
+  "limitations": ["limitations and caveats"],
+  "hyperparameters": {{"param_name": "value"}},
+  "architecture_components": ["architectural building blocks mentioned"],
+  "baselines": ["baseline methods or comparisons mentioned"],
+  "assumptions": ["assumptions made by the authors"]
+}}
+
+Be thorough. Extract ALL equations, even implicit ones. Identify specific dataset names, metric names, and architecture components. For hyperparameters, extract learning rate, batch size, epochs, optimizer, and any others mentioned. If something is not mentioned, use an empty list/object — do NOT fabricate data."""
+
+    result = groq_json([
+        {"role": "system", "content": "You are a precise research paper analyzer. Always return valid JSON."},
+        {"role": "user", "content": prompt},
+    ])
+
+    if result is None:
+        return None
+
+    try:
+        equations = []
+        for eq_data in result.get("equations", []):
+            equations.append(Equation(
+                raw=eq_data.get("raw", ""),
+                intuition=eq_data.get("intuition", ""),
+                variables=eq_data.get("variables", {}),
+                source_section=eq_data.get("source_section", "method"),
+            ))
+
+        return PaperSpec(
+            problem=result.get("problem", request.abstract.split(".")[0].strip()),
+            method=result.get("method", request.method_text.split(".")[0].strip()),
+            key_equations=equations or _heuristic_extract_equations(request.method_text),
+            datasets=result.get("datasets", []),
+            metrics=result.get("metrics", []),
+            assumptions=result.get("assumptions", [
+                "Training distribution reflects real-world usage patterns.",
+                "Compute budget supports full replication runs.",
+            ]),
+            hyperparameters=result.get("hyperparameters", {}),
+            architecture_components=result.get("architecture_components", []),
+            training_details={
+                "hyperparameters": result.get("hyperparameters", {}),
+                "datasets": result.get("datasets", []),
+                "evaluation_metrics": result.get("metrics", []),
+            },
+            citations={
+                "problem": Citation(section="abstract", snippet=request.abstract[:200], confidence=0.95),
+                "method": Citation(section="method", snippet=request.method_text[:250], confidence=0.90),
+            },
+            claims=result.get("claims", []),
+            limitations=result.get("limitations", []),
+            baselines=result.get("baselines", []),
+        )
+    except (KeyError, TypeError, ValueError) as e:
+        # Malformed LLM response — fall back to heuristic
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Heuristic fallback extraction (original logic)
+# ---------------------------------------------------------------------------
+
+def _heuristic_extract_equations(text: str) -> List[Equation]:
+    """Extract equations with variable parsing (heuristic)."""
     patterns = [
         r"([A-Za-z_]\w*\s*=\s*[^\n\.;]{3,})",
         r"(L\s*=\s*[^\n\.;]+)",
@@ -53,28 +141,18 @@ def _extract_equations(text: str) -> List[Equation]:
 def _parse_variables(equation: str) -> Dict[str, str]:
     """Extract variable names from an equation string."""
     variables = {}
-    # Left-hand side
     lhs = equation.split("=")[0].strip()
     if re.match(r"^[A-Za-z_]\w*$", lhs):
         variables[lhs] = "output variable"
 
-    # Common variable meanings
     var_meanings = {
-        "L": "loss function",
-        "alpha": "weighting coefficient",
-        "beta": "regularization coefficient",
-        "gamma": "discount factor",
-        "lambda": "regularization strength",
-        "eta": "learning rate",
-        "theta": "model parameters",
-        "x": "input data",
-        "y": "target/label",
-        "y_pred": "model predictions",
-        "y_true": "ground truth",
-        "KL": "Kullback-Leibler divergence",
-        "CE": "cross-entropy",
-        "W": "weight matrix",
-        "b": "bias vector",
+        "L": "loss function", "alpha": "weighting coefficient",
+        "beta": "regularization coefficient", "gamma": "discount factor",
+        "lambda": "regularization strength", "eta": "learning rate",
+        "theta": "model parameters", "x": "input data", "y": "target/label",
+        "y_pred": "model predictions", "y_true": "ground truth",
+        "KL": "Kullback-Leibler divergence", "CE": "cross-entropy",
+        "W": "weight matrix", "b": "bias vector",
         "sigma": "activation function / standard deviation",
     }
     for var, meaning in var_meanings.items():
@@ -101,12 +179,6 @@ def _generate_equation_intuition(equation: str) -> str:
     return "Defines a mathematical relationship used in the model's computation."
 
 
-def _extract_keywords(text: str, defaults: List[str]) -> List[str]:
-    """Extract known keywords with fallback defaults."""
-    found = [w for w in defaults if w.lower() in text.lower()]
-    return found if found else defaults[:2]
-
-
 DATASET_KEYWORDS = [
     "ImageNet", "CIFAR-10", "CIFAR-100", "MNIST", "SQuAD", "GLUE", "SuperGLUE",
     "MIMIC", "COCO", "VOC", "WMT", "WikiText", "Penn Treebank", "Common Crawl",
@@ -127,29 +199,26 @@ ARCHITECTURE_KEYWORDS = [
 ]
 
 
+def _extract_keywords(text: str, defaults: List[str]) -> List[str]:
+    found = [w for w in defaults if w.lower() in text.lower()]
+    return found if found else defaults[:2]
+
+
 def _extract_claims(text: str) -> List[str]:
-    """Extract paper claims — sentences with strong assertive language."""
     sentences = re.split(r"(?<=[.!?])\s+", text)
     claim_words = ["achieve", "outperform", "surpass", "improve", "demonstrate",
                    "show that", "state-of-the-art", "novel", "first", "propose"]
-    claims = []
-    for s in sentences:
-        lower = s.lower()
-        if any(w in lower for w in claim_words) and len(s) > 30:
-            claims.append(s.strip())
+    claims = [s.strip() for s in sentences
+              if any(w in s.lower() for w in claim_words) and len(s) > 30]
     return claims[:5] or ["The proposed method improves over existing baselines."]
 
 
 def _extract_limitations(text: str) -> List[str]:
-    """Extract limitations and caveats."""
     sentences = re.split(r"(?<=[.!?])\s+", text)
     limit_words = ["limitation", "however", "although", "despite", "challenge",
                    "future work", "does not", "fails to", "restricted"]
-    limitations = []
-    for s in sentences:
-        lower = s.lower()
-        if any(w in lower for w in limit_words) and len(s) > 20:
-            limitations.append(s.strip())
+    limitations = [s.strip() for s in sentences
+                   if any(w in s.lower() for w in limit_words) and len(s) > 20]
     if not limitations:
         limitations = [
             "Evaluation limited to benchmarks used; real-world transfer not validated.",
@@ -159,33 +228,26 @@ def _extract_limitations(text: str) -> List[str]:
 
 
 def _extract_hyperparameters(text: str) -> Dict[str, Any]:
-    """Extract hyperparameters mentioned in the method text."""
     params: Dict[str, Any] = {}
-    # Learning rate
     lr_match = re.search(r"learning[\s_-]*rate\s*(?:of|=|:)?\s*([0-9.e-]+)", text, re.IGNORECASE)
     if lr_match:
         params["learning_rate"] = lr_match.group(1)
-    # Batch size
     bs_match = re.search(r"batch[\s_-]*size\s*(?:of|=|:)?\s*(\d+)", text, re.IGNORECASE)
     if bs_match:
         params["batch_size"] = int(bs_match.group(1))
-    # Epochs
     ep_match = re.search(r"(\d+)\s*epochs?", text, re.IGNORECASE)
     if ep_match:
         params["epochs"] = int(ep_match.group(1))
-    # Optimizer
     for opt in ["Adam", "SGD", "AdamW", "RMSProp", "LAMB"]:
         if opt.lower() in text.lower():
             params["optimizer"] = opt
             break
-    # Alpha/beta coefficients
     alpha_match = re.search(r"alpha\s*=\s*([0-9.]+)", text)
     if alpha_match:
         params["alpha"] = float(alpha_match.group(1))
     beta_match = re.search(r"beta\s*=\s*([0-9.]+)", text)
     if beta_match:
         params["beta"] = float(beta_match.group(1))
-    # Hidden dim / heads
     dim_match = re.search(r"(?:hidden|embedding)[\s_-]*(?:dim|dimension|size)\s*(?:of|=|:)?\s*(\d+)", text, re.IGNORECASE)
     if dim_match:
         params["hidden_dim"] = int(dim_match.group(1))
@@ -195,19 +257,11 @@ def _extract_hyperparameters(text: str) -> Dict[str, Any]:
     return params
 
 
-def read_paper(request: IngestRequest) -> tuple[PaperSpec, List[AgentMessage]]:
-    """Main reader entry point. Returns (PaperSpec, agent_messages)."""
+def _heuristic_extract(request: IngestRequest) -> PaperSpec:
+    """Original heuristic-based extraction."""
     full_text = f"{request.abstract} {request.method_text}"
-    messages: List[AgentMessage] = []
 
-    messages.append(AgentMessage(
-        role=AgentRole.READER,
-        content=f"Ingesting paper: '{request.title}'",
-        metadata={"phase": "start"},
-    ))
-
-    # Extract all components
-    equations = _extract_equations(request.method_text)
+    equations = _heuristic_extract_equations(request.method_text)
     datasets = _extract_keywords(full_text, DATASET_KEYWORDS)
     metrics = _extract_keywords(full_text, METRIC_KEYWORDS)
     architecture = _extract_keywords(full_text, ARCHITECTURE_KEYWORDS)
@@ -217,19 +271,10 @@ def read_paper(request: IngestRequest) -> tuple[PaperSpec, List[AgentMessage]]:
     baselines = _extract_keywords(full_text, ["baseline", "prior work", "existing method", "previous approach"])
 
     citations = {
-        "problem": Citation(
-            section="abstract",
-            snippet=request.abstract[:200],
-            confidence=0.95,
-        ),
-        "method": Citation(
-            section="method",
-            snippet=request.method_text[:250],
-            confidence=0.90,
-        ),
+        "problem": Citation(section="abstract", snippet=request.abstract[:200], confidence=0.95),
+        "method": Citation(section="method", snippet=request.method_text[:250], confidence=0.90),
     }
 
-    # Build training details from extracted info
     training_details: Dict[str, Any] = {}
     if hyperparams:
         training_details["hyperparameters"] = hyperparams
@@ -238,7 +283,7 @@ def read_paper(request: IngestRequest) -> tuple[PaperSpec, List[AgentMessage]]:
     if metrics:
         training_details["evaluation_metrics"] = metrics
 
-    spec = PaperSpec(
+    return PaperSpec(
         problem=request.abstract.split(".")[0].strip(),
         method=request.method_text.split(".")[0].strip(),
         key_equations=equations,
@@ -258,21 +303,60 @@ def read_paper(request: IngestRequest) -> tuple[PaperSpec, List[AgentMessage]]:
         baselines=baselines,
     )
 
+
+# ---------------------------------------------------------------------------
+# Main entry point
+# ---------------------------------------------------------------------------
+
+def read_paper(request: IngestRequest) -> tuple[PaperSpec, List[AgentMessage]]:
+    """Main reader entry point. Uses AI extraction with heuristic fallback."""
+    messages: List[AgentMessage] = []
+
+    ai_mode = is_groq_available()
+    messages.append(AgentMessage(
+        role=AgentRole.READER,
+        content=f"Ingesting paper: '{request.title}' [{'AI-powered via Groq' if ai_mode else 'heuristic mode'}]",
+        metadata={"phase": "start", "mode": "ai" if ai_mode else "heuristic"},
+    ))
+
+    # Try AI extraction first
+    spec = None
+    if ai_mode:
+        spec = _ai_extract(request)
+        if spec:
+            messages.append(AgentMessage(
+                role=AgentRole.READER,
+                content="AI extraction successful — used Groq LLM for deep paper understanding.",
+                metadata={"mode": "ai"},
+                confidence=0.92,
+            ))
+
+    # Fall back to heuristic if AI not available or failed
+    if spec is None:
+        spec = _heuristic_extract(request)
+        if ai_mode:
+            messages.append(AgentMessage(
+                role=AgentRole.READER,
+                content="AI extraction failed — falling back to heuristic extraction.",
+                metadata={"mode": "heuristic_fallback"},
+                confidence=0.75,
+            ))
+
     messages.append(AgentMessage(
         role=AgentRole.READER,
         content=(
-            f"Extraction complete. Found {len(equations)} equations, "
-            f"{len(datasets)} datasets, {len(metrics)} metrics, "
-            f"{len(claims)} claims, {len(hyperparams)} hyperparameters."
+            f"Extraction complete. Found {len(spec.key_equations)} equations, "
+            f"{len(spec.datasets)} datasets, {len(spec.metrics)} metrics, "
+            f"{len(spec.claims)} claims, {len(spec.hyperparameters)} hyperparameters."
         ),
         metadata={
-            "equations_count": len(equations),
-            "datasets": datasets,
-            "metrics": metrics,
-            "claims_count": len(claims),
-            "hyperparams": hyperparams,
+            "equations_count": len(spec.key_equations),
+            "datasets": spec.datasets,
+            "metrics": spec.metrics,
+            "claims_count": len(spec.claims),
+            "hyperparams": spec.hyperparameters,
         },
-        confidence=0.85,
+        confidence=0.92 if ai_mode and spec else 0.85,
     ))
 
     return spec, messages
