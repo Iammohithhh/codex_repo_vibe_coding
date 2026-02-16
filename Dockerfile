@@ -11,7 +11,7 @@ WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --production=false
 COPY frontend/ ./
-RUN npm run build
+RUN npm run build && mkdir -p /app/frontend/public
 
 # -- Stage 2: Production image ------------------------------------------------
 FROM python:3.11-slim AS production
