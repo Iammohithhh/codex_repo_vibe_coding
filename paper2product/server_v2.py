@@ -576,7 +576,7 @@ class Handler(BaseHTTPRequestHandler):
         }
 
 
-def run(host: str = "127.0.0.1", port: int = 8000):
+def run(host: str = "0.0.0.0", port: int = 8000):
     db.init_db()
     server = ThreadingHTTPServer((host, port), Handler)
     print(f"Paper2Product 2.0 running at http://{host}:{port}")
