@@ -133,6 +133,20 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/openapi.json":
             return self._send_json(self._full_openapi())
 
+        # ArXiv fetch
+        if path == "/api/v2/arxiv/fetch":
+            arxiv_id = query.get("id", [None])[0]
+            arxiv_url = query.get("url", [None])[0]
+            if not arxiv_id and arxiv_url:
+                # Extract ID from URL like https://arxiv.org/abs/2301.12345
+                import re
+                m = re.search(r"(\d{4}\.\d{4,5})(v\d+)?", arxiv_url)
+                if m:
+                    arxiv_id = m.group(1)
+            if not arxiv_id:
+                return self._send_json({"detail": "Provide ?id=2301.12345 or ?url=https://arxiv.org/abs/..."}, status=400)
+            return self._handle_arxiv_fetch(arxiv_id)
+
         # List projects
         if path == "/api/v2/projects":
             workspace_id = query.get("workspace_id", [None])[0]
@@ -172,7 +186,7 @@ class Handler(BaseHTTPRequestHandler):
                 scaffold = project_data.get("code_scaffold", {})
                 return self._send_json({
                     "framework": scaffold.get("framework", ""),
-                    "files": [{"path": f.get("path", ""), "language": f.get("language", "")} for f in scaffold.get("files", [])],
+                    "files": [{"path": f.get("path", ""), "content": f.get("content", ""), "language": f.get("language", "")} for f in scaffold.get("files", [])],
                     "architecture_mermaid": scaffold.get("architecture_mermaid", ""),
                     "confidence": scaffold.get("confidence", 0),
                 })
@@ -317,6 +331,51 @@ class Handler(BaseHTTPRequestHandler):
     # -----------------------------------------------------------------------
     # Handlers
     # -----------------------------------------------------------------------
+    def _handle_arxiv_fetch(self, arxiv_id: str):
+        """Fetch paper metadata from ArXiv Atom API."""
+        import urllib.request
+        import urllib.error
+        import re
+        import xml.etree.ElementTree as ET
+
+        url = f"http://export.arxiv.org/api/query?id_list={arxiv_id}"
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Paper2Product/2.0"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                xml_data = resp.read().decode("utf-8")
+        except (urllib.error.URLError, urllib.error.HTTPError) as e:
+            return self._send_json({"detail": f"ArXiv fetch failed: {e}"}, status=502)
+
+        try:
+            ns = {"atom": "http://www.w3.org/2005/Atom"}
+            root = ET.fromstring(xml_data)
+            entry = root.find("atom:entry", ns)
+            if entry is None:
+                return self._send_json({"detail": "Paper not found on ArXiv"}, status=404)
+
+            title = (entry.findtext("atom:title", "", ns) or "").strip().replace("\n", " ")
+            abstract = (entry.findtext("atom:summary", "", ns) or "").strip().replace("\n", " ")
+            authors = [a.findtext("atom:name", "", ns) for a in entry.findall("atom:author", ns)]
+            published = entry.findtext("atom:published", "", ns)
+            links = {
+                link.get("title", link.get("type", "link")): link.get("href", "")
+                for link in entry.findall("atom:link", ns)
+            }
+            categories = [c.get("term", "") for c in entry.findall("atom:category", ns)]
+
+            return self._send_json({
+                "arxiv_id": arxiv_id,
+                "title": title,
+                "abstract": abstract,
+                "authors": authors,
+                "published": published,
+                "categories": categories,
+                "pdf_url": links.get("pdf", f"https://arxiv.org/pdf/{arxiv_id}"),
+                "abs_url": f"https://arxiv.org/abs/{arxiv_id}",
+            })
+        except ET.ParseError:
+            return self._send_json({"detail": "Failed to parse ArXiv response"}, status=502)
+
     def _handle_ingest(self, payload: dict):
         title = payload.get("title", "").strip()
         abstract = payload.get("abstract", "").strip()
