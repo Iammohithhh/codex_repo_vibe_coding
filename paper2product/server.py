@@ -133,7 +133,7 @@ class Handler(BaseHTTPRequestHandler):
         self._send_json({"detail": "Not found"}, status=404)
 
 
-def run(host: str = "127.0.0.1", port: int = 8000):
+def run(host: str = "0.0.0.0", port: int = 8000):
     server = ThreadingHTTPServer((host, port), Handler)
     print(f"Paper2Product running at http://{host}:{port}")
     server.serve_forever()

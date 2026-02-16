@@ -65,4 +65,6 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 USER p2p
 
 # Start both backend and frontend
-CMD ["sh", "-c", "python -m paper2product --port=${P2P_PORT} & node frontend-standalone/server.js & wait"]
+# HOSTNAME=0.0.0.0 forces Next.js to bind all interfaces (not container hostname)
+# PORT=3000 prevents Next.js from stealing the platform's PORT env var
+CMD ["sh", "-c", "python -m paper2product --port=${P2P_PORT} & HOSTNAME=0.0.0.0 PORT=3000 node frontend-standalone/server.js & wait"]
