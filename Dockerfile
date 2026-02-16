@@ -39,13 +39,11 @@ ENV P2P_HOST=0.0.0.0
 ENV GROQ_API_KEY=""
 ENV GROQ_MODEL=llama-3.3-70b-versatile
 
-EXPOSE 8000
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/openapi.json')" || exit 1
-
 USER p2p
+
+# No Docker HEALTHCHECK — Railway provides its own health probes.
+# A hardcoded port here would mismatch Railway's dynamic PORT, causing
+# the container to be marked unhealthy and "Error configuring network".
 
 # Single process: Python serves API + SPA on one port
 # Uses PORT env from platform (Railway/Render/Fly) or defaults to 8000
