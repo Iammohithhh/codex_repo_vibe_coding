@@ -6,12 +6,9 @@ restartPolicy = "on_failure"
 healthchecks = {enabled = true}
 
 [env]
-PORT = "3000"
-P2P_PORT = "8000"
 ENVIRONMENT = "production"
 PYTHONUNBUFFERED = "1"
-HOSTNAME = "0.0.0.0"
 
 [docs]
-name = "Paper2Product 2.0 Backend"
-description = "Python backend service for Paper2Product 2.0"
+name = "Paper2Product 2.0"
+description = "AI Research OS — Python API + SPA frontend on a single port"
