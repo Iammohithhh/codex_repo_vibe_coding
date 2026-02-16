@@ -55,16 +55,18 @@ ENV P2P_HOST=0.0.0.0
 ENV P2P_PORT=8000
 ENV GROQ_API_KEY=""
 ENV GROQ_MODEL=llama-3.3-70b-versatile
+# Next.js uses PORT from the platform; default to 3000 for local dev
+ENV HOSTNAME=0.0.0.0
+ENV PORT=3000
 
-EXPOSE 8000 3000
+EXPOSE ${PORT}
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/openapi.json')" || exit 1
+# Health check — hit the Next.js frontend (the externally routed port)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD python -c "import os,urllib.request; urllib.request.urlopen(f'http://localhost:{os.environ.get(\"PORT\",3000)}/')" || exit 1
 
 USER p2p
 
-# Start both backend and frontend
-# HOSTNAME=0.0.0.0 forces Next.js to bind all interfaces (not container hostname)
-# PORT=3000 prevents Next.js from stealing the platform's PORT env var
-CMD ["sh", "-c", "python -m paper2product --port=${P2P_PORT} & HOSTNAME=0.0.0.0 PORT=3000 node frontend-standalone/server.js & wait"]
+# Start backend (internal, port 8000) then Next.js (external, platform PORT)
+# Next.js rewrites in next.config.js proxy /api/* -> localhost:8000
+CMD ["sh", "-c", "python -m paper2product --port=${P2P_PORT} & node frontend-standalone/server.js & wait"]
