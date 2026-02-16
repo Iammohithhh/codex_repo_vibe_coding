@@ -1,13 +1,8 @@
-"""Explainer Agent — Creates visual and textual intuition layers.
+"""Explainer Agent — AI-powered visual and textual intuition layers.
 
-Generates:
-- Multi-depth summaries (ELI5 -> practitioner -> researcher)
-- Equation-to-intuition translations
-- Knowledge graph with nodes and edges
-- Visual packs (architecture, data flow, failure modes, dependencies)
-- Interactive concept cards
-- Counterfactual analysis
-- Quiz/interview Q&A cards
+Uses Groq LLM to generate rich, context-aware explanations, failure modes,
+counterfactual analyses, and quiz cards. Falls back to template-based
+generation when GROQ_API_KEY is not set.
 """
 from __future__ import annotations
 
@@ -21,10 +16,155 @@ from ..models.schema import (
     PaperSpec,
     VisualPack,
 )
+from ..llm.groq_client import groq_json, is_groq_available
 
+
+# ---------------------------------------------------------------------------
+# AI-powered explanation generation via Groq
+# ---------------------------------------------------------------------------
+
+def _ai_build_summaries(spec: PaperSpec) -> Dict[str, str] | None:
+    """Use Groq LLM to generate multi-depth summaries."""
+    if not is_groq_available():
+        return None
+
+    prompt = f"""Generate three summaries of this research paper at different depths.
+
+Problem: {spec.problem}
+Method: {spec.method}
+Key equations: {[eq.raw + ' — ' + eq.intuition for eq in spec.key_equations]}
+Datasets: {spec.datasets}
+Metrics: {spec.metrics}
+Architecture: {spec.architecture_components}
+Claims: {spec.claims}
+Limitations: {spec.limitations}
+
+Return JSON:
+{{
+  "eli5": "Explain like I'm 5 — simple analogy, no jargon, 2-3 sentences",
+  "practitioner": "For an ML engineer — key technical details, what to know to implement, 1 paragraph",
+  "researcher": "For a researcher — full technical depth with equations, assumptions, limitations, 2-3 paragraphs"
+}}"""
+
+    return groq_json([
+        {"role": "system", "content": "You are a science communicator who adapts explanations to different audiences. Return valid JSON."},
+        {"role": "user", "content": prompt},
+    ])
+
+
+def _ai_build_failure_modes(spec: PaperSpec) -> List[Dict[str, Any]] | None:
+    """Use Groq LLM to identify paper-specific failure modes."""
+    if not is_groq_available():
+        return None
+
+    prompt = f"""Analyze potential failure modes for this ML paper's approach.
+
+Method: {spec.method}
+Architecture: {spec.architecture_components}
+Datasets: {spec.datasets}
+Limitations: {spec.limitations}
+Assumptions: {spec.assumptions}
+
+Return JSON:
+{{
+  "failure_modes": [
+    {{
+      "scenario": "specific failure scenario",
+      "description": "what goes wrong and why",
+      "impact": "effect on model performance",
+      "mitigation": "how to prevent or detect",
+      "severity": "high/medium/low"
+    }}
+  ]
+}}
+
+Include at least 4 failure modes. Be specific to THIS paper, not generic ML failures."""
+
+    result = groq_json([
+        {"role": "system", "content": "You are an ML safety and reliability expert. Return valid JSON."},
+        {"role": "user", "content": prompt},
+    ])
+
+    if result and "failure_modes" in result:
+        return result["failure_modes"]
+    return None
+
+
+def _ai_build_counterfactuals(spec: PaperSpec) -> List[Dict[str, str]] | None:
+    """Use Groq LLM to generate insightful counterfactual analyses."""
+    if not is_groq_available():
+        return None
+
+    prompt = f"""Generate counterfactual "what if" analyses for this paper.
+
+Method: {spec.method}
+Architecture: {spec.architecture_components}
+Key equations: {[eq.raw for eq in spec.key_equations]}
+Hyperparameters: {spec.hyperparameters}
+
+Return JSON:
+{{
+  "counterfactuals": [
+    {{
+      "question": "What if we changed X?",
+      "impact": "Expected effect on performance",
+      "alternative": "Concrete alternative to try"
+    }}
+  ]
+}}
+
+Generate 4-5 insightful counterfactuals specific to this paper's design choices."""
+
+    result = groq_json([
+        {"role": "system", "content": "You are a thoughtful ML researcher exploring design alternatives. Return valid JSON."},
+        {"role": "user", "content": prompt},
+    ])
+
+    if result and "counterfactuals" in result:
+        return result["counterfactuals"]
+    return None
+
+
+def _ai_build_quiz_cards(spec: PaperSpec) -> List[Dict[str, str]] | None:
+    """Use Groq LLM to generate educational quiz cards."""
+    if not is_groq_available():
+        return None
+
+    prompt = f"""Generate quiz/interview cards about this research paper at different difficulty levels.
+
+Problem: {spec.problem}
+Method: {spec.method}
+Key equations: {[eq.raw + ' — ' + eq.intuition for eq in spec.key_equations]}
+Datasets: {spec.datasets}
+Metrics: {spec.metrics}
+Architecture: {spec.architecture_components}
+Assumptions: {spec.assumptions}
+Limitations: {spec.limitations}
+
+Return JSON:
+{{
+  "quiz_cards": [
+    {{"question": "...", "answer": "detailed answer", "difficulty": "beginner/intermediate/advanced/expert"}}
+  ]
+}}
+
+Generate 8-10 cards spanning all difficulty levels. Include conceptual, technical, and critical thinking questions."""
+
+    result = groq_json([
+        {"role": "system", "content": "You are an ML educator creating assessment materials. Return valid JSON."},
+        {"role": "user", "content": prompt},
+    ])
+
+    if result and "quiz_cards" in result:
+        return result["quiz_cards"]
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Template-based fallback (original logic)
+# ---------------------------------------------------------------------------
 
 def _build_multi_depth_summary(spec: PaperSpec) -> Dict[str, str]:
-    """Generate summaries at multiple depth levels."""
     return {
         "eli5": (
             f"This paper solves the problem: {spec.problem[:100]}. "
@@ -54,7 +194,6 @@ def _build_multi_depth_summary(spec: PaperSpec) -> Dict[str, str]:
 
 
 def _build_knowledge_graph(spec: PaperSpec) -> Tuple[List[GraphNode], List[GraphEdge]]:
-    """Build a paper knowledge graph with typed nodes and edges."""
     nodes = [
         GraphNode(id="problem", label=spec.problem[:60], node_type="problem"),
         GraphNode(id="method", label=spec.method[:60], node_type="method"),
@@ -63,31 +202,26 @@ def _build_knowledge_graph(spec: PaperSpec) -> Tuple[List[GraphNode], List[Graph
         GraphEdge(source="problem", target="method", label="solved by"),
     ]
 
-    # Add equation nodes
     for i, eq in enumerate(spec.key_equations):
         eq_id = f"eq_{i}"
         nodes.append(GraphNode(id=eq_id, label=eq.raw[:50], node_type="equation"))
         edges.append(GraphEdge(source="method", target=eq_id, label="uses"))
 
-    # Add dataset nodes
     for i, ds in enumerate(spec.datasets):
         ds_id = f"dataset_{i}"
         nodes.append(GraphNode(id=ds_id, label=ds, node_type="dataset"))
         edges.append(GraphEdge(source="method", target=ds_id, label="evaluated on"))
 
-    # Add metric nodes
     for i, m in enumerate(spec.metrics):
         m_id = f"metric_{i}"
         nodes.append(GraphNode(id=m_id, label=m, node_type="metric"))
         edges.append(GraphEdge(source="method", target=m_id, label="measures"))
 
-    # Add architecture component nodes
     for i, comp in enumerate(spec.architecture_components[:5]):
         comp_id = f"arch_{i}"
         nodes.append(GraphNode(id=comp_id, label=comp, node_type="architecture"))
         edges.append(GraphEdge(source="method", target=comp_id, label="component"))
 
-    # Add claim nodes
     for i, claim in enumerate(spec.claims[:3]):
         claim_id = f"claim_{i}"
         nodes.append(GraphNode(id=claim_id, label=claim[:60], node_type="claim"))
@@ -97,16 +231,13 @@ def _build_knowledge_graph(spec: PaperSpec) -> Tuple[List[GraphNode], List[Graph
 
 
 def _build_mermaid_diagrams(spec: PaperSpec) -> Dict[str, str]:
-    """Generate multiple Mermaid diagrams for different views."""
     diagrams = {}
 
-    # Architecture diagram
     arch_lines = ["flowchart TD"]
     arch_lines.append("    INPUT[Input Data] --> PREPROCESS[Preprocessing]")
     arch_lines.append("    PREPROCESS --> ENCODER[Encoder]")
     prev = "ENCODER"
     for i, comp in enumerate(spec.architecture_components[:5]):
-        safe_comp = comp.replace(" ", "_").replace("-", "_")
         node_id = f"COMP_{i}"
         arch_lines.append(f"    {prev} --> {node_id}[{comp}]")
         prev = node_id
@@ -117,7 +248,6 @@ def _build_mermaid_diagrams(spec: PaperSpec) -> Dict[str, str]:
         arch_lines.append(f"    EVAL --> M_{safe_m}[{m}]")
     diagrams["architecture"] = "\n".join(arch_lines)
 
-    # Data flow diagram
     flow_lines = ["flowchart LR"]
     flow_lines.append("    RAW[Raw Paper] --> EXTRACT[Feature Extraction]")
     flow_lines.append("    EXTRACT --> TRAIN[Training Pipeline]")
@@ -127,7 +257,6 @@ def _build_mermaid_diagrams(spec: PaperSpec) -> Dict[str, str]:
         flow_lines.append(f"    DS_{ds.replace('-', '_').replace(' ', '_')}[{ds}] --> TRAIN")
     diagrams["data_flow"] = "\n".join(flow_lines)
 
-    # Loss/objective diagram
     loss_lines = ["flowchart TD"]
     for eq in spec.key_equations[:3]:
         safe_raw = eq.raw[:30].replace('"', "'").replace("[", "(").replace("]", ")")
@@ -141,7 +270,6 @@ def _build_mermaid_diagrams(spec: PaperSpec) -> Dict[str, str]:
 
 
 def _build_failure_mode_map(spec: PaperSpec) -> List[Dict[str, Any]]:
-    """Generate failure mode analysis."""
     modes = [
         {
             "scenario": "Distribution shift",
@@ -172,7 +300,6 @@ def _build_failure_mode_map(spec: PaperSpec) -> List[Dict[str, Any]]:
             "severity": "low",
         },
     ]
-    # Add paper-specific failure modes from limitations
     for lim in spec.limitations[:2]:
         modes.append({
             "scenario": "Paper limitation",
@@ -185,7 +312,6 @@ def _build_failure_mode_map(spec: PaperSpec) -> List[Dict[str, Any]]:
 
 
 def _build_counterfactual_analysis(spec: PaperSpec) -> List[Dict[str, str]]:
-    """Generate 'what if we change X?' analysis."""
     analyses = []
     for comp in spec.architecture_components[:3]:
         analyses.append({
@@ -209,51 +335,29 @@ def _build_counterfactual_analysis(spec: PaperSpec) -> List[Dict[str, str]]:
 
 
 def _build_quiz_cards(spec: PaperSpec) -> List[Dict[str, str]]:
-    """Generate quiz and interview-style Q&A cards."""
     cards = [
-        {
-            "question": f"What problem does this paper solve?",
-            "answer": spec.problem,
-            "difficulty": "beginner",
-        },
-        {
-            "question": f"What is the core method proposed?",
-            "answer": spec.method,
-            "difficulty": "beginner",
-        },
-        {
-            "question": f"What datasets are used for evaluation?",
-            "answer": ", ".join(spec.datasets) if spec.datasets else "Not specified",
-            "difficulty": "intermediate",
-        },
-        {
-            "question": f"What metrics are reported?",
-            "answer": ", ".join(spec.metrics) if spec.metrics else "Not specified",
-            "difficulty": "intermediate",
-        },
+        {"question": "What problem does this paper solve?", "answer": spec.problem, "difficulty": "beginner"},
+        {"question": "What is the core method proposed?", "answer": spec.method, "difficulty": "beginner"},
+        {"question": "What datasets are used for evaluation?",
+         "answer": ", ".join(spec.datasets) if spec.datasets else "Not specified", "difficulty": "intermediate"},
+        {"question": "What metrics are reported?",
+         "answer": ", ".join(spec.metrics) if spec.metrics else "Not specified", "difficulty": "intermediate"},
     ]
     for eq in spec.key_equations[:2]:
-        cards.append({
-            "question": f"Explain the equation: {eq.raw}",
-            "answer": eq.intuition,
-            "difficulty": "advanced",
-        })
-    cards.append({
-        "question": "What are the key assumptions of this work?",
-        "answer": "; ".join(spec.assumptions),
-        "difficulty": "advanced",
-    })
-    cards.append({
-        "question": "What are the limitations and how would you address them?",
-        "answer": "; ".join(spec.limitations),
-        "difficulty": "expert",
-    })
+        cards.append({"question": f"Explain the equation: {eq.raw}", "answer": eq.intuition, "difficulty": "advanced"})
+    cards.append({"question": "What are the key assumptions of this work?",
+                  "answer": "; ".join(spec.assumptions), "difficulty": "advanced"})
+    cards.append({"question": "What are the limitations and how would you address them?",
+                  "answer": "; ".join(spec.limitations), "difficulty": "expert"})
     return cards
 
 
-def _build_distillation(spec: PaperSpec) -> Dict[str, Any]:
-    """Build the full research distillation package."""
+def _build_distillation(spec: PaperSpec, summaries: Dict[str, str],
+                        failure_modes: List[Dict[str, Any]],
+                        counterfactuals: List[Dict[str, str]],
+                        quiz_cards: List[Dict[str, str]]) -> Dict[str, Any]:
     return {
+        "summaries": summaries,
         "poster": {
             "problem": spec.problem,
             "method": spec.method,
@@ -283,10 +387,8 @@ def _build_distillation(spec: PaperSpec) -> Dict[str, Any]:
                 for eq in spec.key_equations
             ],
             "failure_cards": [
-                {"scenario": "Low data regime", "impact": "Overfitting risk"},
-                {"scenario": "Domain shift", "impact": "Metric degradation"},
-                {"scenario": "Noisy labels", "impact": "Unstable convergence"},
-                {"scenario": "Resource constraints", "impact": "Undertrained model"},
+                {"scenario": fm.get("scenario", "Unknown"), "impact": fm.get("impact", "")}
+                for fm in failure_modes[:4]
             ],
         },
         "executive_takeaways": {
@@ -347,36 +449,50 @@ def _build_distillation(spec: PaperSpec) -> Dict[str, Any]:
                 "Write up findings for a technical blog or paper",
             ],
         },
-        "quiz_cards": _build_quiz_cards(spec),
+        "quiz_cards": quiz_cards,
+        "counterfactual_analysis": counterfactuals,
     }
 
 
+# ---------------------------------------------------------------------------
+# Main entry point
+# ---------------------------------------------------------------------------
+
 def explain_paper(spec: PaperSpec) -> Tuple[VisualPack, Dict[str, Any], List[AgentMessage]]:
-    """Main explainer entry point. Returns (VisualPack, distillation, messages)."""
+    """Main explainer entry point. Uses AI explanations with template fallback."""
     messages: List[AgentMessage] = []
 
+    ai_mode = is_groq_available()
     messages.append(AgentMessage(
         role=AgentRole.EXPLAINER,
-        content="Generating visual and textual explanations.",
-        metadata={"phase": "start"},
+        content=f"Generating explanations [{'AI-powered via Groq' if ai_mode else 'template mode'}].",
+        metadata={"phase": "start", "mode": "ai" if ai_mode else "template"},
     ))
 
-    # Build knowledge graph
+    # Build knowledge graph (always structural — no LLM needed)
     nodes, edges = _build_knowledge_graph(spec)
-
-    # Build mermaid diagrams
     mermaid_diagrams = _build_mermaid_diagrams(spec)
 
-    # Build failure mode map
-    failure_modes = _build_failure_mode_map(spec)
+    # AI-powered or template-based content
+    ai_summaries = _ai_build_summaries(spec) if ai_mode else None
+    ai_failure_modes = _ai_build_failure_modes(spec) if ai_mode else None
+    ai_counterfactuals = _ai_build_counterfactuals(spec) if ai_mode else None
+    ai_quiz_cards = _ai_build_quiz_cards(spec) if ai_mode else None
 
-    # Build counterfactual analysis
-    counterfactuals = _build_counterfactual_analysis(spec)
+    summaries = ai_summaries if ai_summaries else _build_multi_depth_summary(spec)
+    failure_modes = ai_failure_modes if ai_failure_modes else _build_failure_mode_map(spec)
+    counterfactuals = ai_counterfactuals if ai_counterfactuals else _build_counterfactual_analysis(spec)
+    quiz_cards = ai_quiz_cards if ai_quiz_cards else _build_quiz_cards(spec)
 
-    # Build multi-depth summaries
-    summaries = _build_multi_depth_summary(spec)
+    ai_components_used = sum(1 for x in [ai_summaries, ai_failure_modes, ai_counterfactuals, ai_quiz_cards] if x)
+    if ai_components_used > 0:
+        messages.append(AgentMessage(
+            role=AgentRole.EXPLAINER,
+            content=f"AI generated {ai_components_used}/4 explanation components via Groq LLM.",
+            metadata={"mode": "ai", "ai_components": ai_components_used},
+            confidence=0.90,
+        ))
 
-    # Build dependency view
     dependency_view = {
         "components": spec.architecture_components,
         "dependencies": [
@@ -386,7 +502,6 @@ def explain_paper(spec: PaperSpec) -> Tuple[VisualPack, Dict[str, Any], List[Age
         "counterfactuals": counterfactuals,
     }
 
-    # Data flow timeline
     data_flow = [
         {"step": 1, "name": "Data Loading", "description": f"Load {', '.join(spec.datasets[:2]) if spec.datasets else 'dataset'}"},
         {"step": 2, "name": "Preprocessing", "description": "Transform and augment data"},
@@ -407,9 +522,7 @@ def explain_paper(spec: PaperSpec) -> Tuple[VisualPack, Dict[str, Any], List[Age
         edges=edges,
     )
 
-    # Build distillation
-    distillation = _build_distillation(spec)
-    distillation["summaries"] = summaries
+    distillation = _build_distillation(spec, summaries, failure_modes, counterfactuals, quiz_cards)
 
     messages.append(AgentMessage(
         role=AgentRole.EXPLAINER,
@@ -421,7 +534,7 @@ def explain_paper(spec: PaperSpec) -> Tuple[VisualPack, Dict[str, Any], List[Age
             "diagrams": len(mermaid_diagrams),
             "failure_modes": len(failure_modes),
         },
-        confidence=0.85,
+        confidence=0.90 if ai_components_used > 0 else 0.85,
     ))
 
     return visual_pack, distillation, messages

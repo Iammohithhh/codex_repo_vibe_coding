@@ -21,6 +21,12 @@ LABEL maintainer="paper2product-team"
 LABEL version="2.0.0"
 LABEL description="Paper2Product 2.0 — AI Research OS"
 
+# Install Node.js runtime (needed to serve the Next.js standalone build)
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+
 # Security: run as non-root
 RUN groupadd -r p2p && useradd -r -g p2p -d /app -s /sbin/nologin p2p
 
@@ -47,6 +53,8 @@ ENV P2P_DB_PATH=/app/data/paper2product.db
 ENV P2P_SECRET=change-me-in-production
 ENV P2P_HOST=0.0.0.0
 ENV P2P_PORT=8000
+ENV GROQ_API_KEY=""
+ENV GROQ_MODEL=llama-3.3-70b-versatile
 
 EXPOSE 8000 3000
 
